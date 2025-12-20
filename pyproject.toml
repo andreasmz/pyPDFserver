@@ -1,0 +1,35 @@
+[project]
+name = "pyPDFServer"
+authors = [
+  { name="Andreas Brilka"},
+]
+dynamic = ["version"]
+
+description = "Host your own local PDF server applying OCR and duplex scanning on your documents"
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.8"
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha"
+]
+keywords = ["neurotorch", "neurons", "glutamate", "synapses", "python", "iGluSnFR"]
+
+dependencies = [
+  "pyftpdlib>=2.1",
+  "pypdf>=5.9",
+  "platformdirs>=4.2",
+  "ocrmypdf>=14.4"
+]
+
+[tool.hatch.version]
+path = "src/__init__.py"
+
+[project.urls]
+Repository = "https://github.com/andreasmz/pypdfserver"
+Issues = "https://github.com/andreasmz/pypdfserver/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
