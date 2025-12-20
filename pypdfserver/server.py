@@ -1,6 +1,7 @@
 import hashlib
 import io
 import platformdirs
+import tempfile
 from pathlib import Path
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.handlers import TLS_FTPHandler
@@ -8,13 +9,9 @@ from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.filesystems import AbstractedFS
 from threading import Thread
 
-import os
-
-os.path.realpath("")
 
 from .core import *
 from .pdf_worker import task_queue, Job
-
 
 class FTPAuthorizer(DummyAuthorizer):
 
@@ -22,45 +19,26 @@ class FTPAuthorizer(DummyAuthorizer):
         return super().validate_authentication(username, hashlib.sha256(password.encode("utf-8")), handler)
     
 
-class PDF_AbstractedFS(AbstractedFS):
-
-    def __init__(self, root, cmd_channel):
-        logger.debug(f"[DEBUG 25]: {type(root)}, {type(cmd_channel)}")
-        super().__init__(root, cmd_channel)
-
-    # self.root
-    # self.cmd
-    # def ftpnorm
-    # def ftp2fs
-    # def fs2ftp
-    
-    def validpath(self, path: str):
-        
-
-    def open(self, filename, mode):
-        buffer = io.BytesIO()
-        return buffer
-    
-    def mkdir(self, path: Path) -> None:
-        # Do not create directories
-        pass
-
-    def chdir(self, path) -> None:
-        # Do not allow to change directories
-        pass
-
-    def rmdir(self, path):
-        return super().rmdir(path)
-
-    
-    def listdir(self, path):
-        return []
-    
 
 class PDF_FTPHandler(TLS_FTPHandler):
 
     banner = "pyPDFserver"
-    abstracted_fs = PDF_AbstractedFS
+
+    def on_connect(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver")
+        if self.fs is not None:
+            self.fs.chdir(self.temp_dir)
+        logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected to temporary directory {self.temp_dir}")
+        super().on_connect()    
+
+    def on_disconnect(self) -> None:
+        super().on_disconnect()
+        logger.debug(f"Client {self.remote_ip}:{self.remote_port} disconected. Removing temporary directory {self.temp_dir}")
+        self.temp_dir.cleanup()
+
+    def on_file_received(self, file: str):
+        super().on_file_received(file)
+        logger.debug(f"Received file '{file}'")
 
 
 class PDF_FTPServer:
@@ -80,7 +58,6 @@ class PDF_FTPServer:
             logger.debug(f"Hashed password and saved it back to config")
 
         home_dir = platformdirs.site_cache_path(appname="pyPDFserver", appauthor=False, ensure_exists=True) / "ftp_cache"
-
 
         authorizer = FTPAuthorizer()
         authorizer.add_user(
