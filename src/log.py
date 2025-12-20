@@ -59,3 +59,7 @@ match _log_level := config.get("SETTINGS", "log_level", fallback="INFO").upper()
         logger.warning(f"Invalid value '{_log_level}' for log_level")
 
 
+def debug() -> None:
+    """ Start debugging """
+    logger.setLevel(logging.DEBUG)
+    logger.info(f"Started debugging")
