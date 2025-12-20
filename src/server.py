@@ -1,42 +1,66 @@
 import hashlib
 import io
 import platformdirs
-import queue
+from pathlib import Path
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.handlers import TLS_FTPHandler
 from pyftpdlib.authorizers import DummyAuthorizer
+from pyftpdlib.filesystems import AbstractedFS
 from threading import Thread
 
+import os
+
+os.path.realpath("")
+
 from .core import *
+from .pdf_worker import task_queue, Job
 
 
 class FTPAuthorizer(DummyAuthorizer):
 
-    def validate_authentication(self, username, password, handler):
-        password = hashlib.sha256(password.encode("utf-8"))
-        return super().validate_authentication(username, password, handler)
+    def validate_authentication(self, username: str, password: str, handler):
+        return super().validate_authentication(username, hashlib.sha256(password.encode("utf-8")), handler)
+    
+
+class PDF_AbstractedFS(AbstractedFS):
+
+    def __init__(self, root, cmd_channel):
+        logger.debug(f"[DEBUG 25]: {type(root)}, {type(cmd_channel)}")
+        super().__init__(root, cmd_channel)
+
+    # self.root
+    # self.cmd
+    # def ftpnorm
+    # def ftp2fs
+    # def fs2ftp
+    
+    def validpath(self, path: str):
+        
+
+    def open(self, filename, mode):
+        buffer = io.BytesIO()
+        return buffer
+    
+    def mkdir(self, path: Path) -> None:
+        # Do not create directories
+        pass
+
+    def chdir(self, path) -> None:
+        # Do not allow to change directories
+        pass
+
+    def rmdir(self, path):
+        return super().rmdir(path)
+
+    
+    def listdir(self, path):
+        return []
+    
 
 class PDF_FTPHandler(TLS_FTPHandler):
 
     banner = "pyPDFserver"
-
-    def ftp_STOR(self, file, mode="w"):
-        buffer = io.BytesIO()
-        self.uploaded_files[file] = buffer
-
-        def data_consumer(data):
-            buffer.write(data)
-
-        self.push_dtp_data(
-            data_consumer,
-            isproducer=False,
-            file=None
-        )
-
-
-
-        return super().ftp_STOR(file, mode)
-
+    abstracted_fs = PDF_AbstractedFS
 
 
 class PDF_FTPServer:
@@ -55,13 +79,18 @@ class PDF_FTPServer:
             config.set("FTP", "password", f"$SHA256${password}$")
             logger.debug(f"Hashed password and saved it back to config")
 
+        home_dir = platformdirs.site_cache_path(appname="pyPDFserver", appauthor=False, ensure_exists=True) / "ftp_cache"
+
+
         authorizer = FTPAuthorizer()
         authorizer.add_user(
             username,
             password,
-            homedir=platformdirs.site_cache_path(appname="pyPDFserver", appauthor=False, ensure_exists=True) / "ftp_cache"
+            homedir=home_dir,
+            perm="w",
+            msg_login="Connected to pyPDFserver"
         )
-        logger.debug(f"Created user {username} and password *****")
+        logger.debug(f"Created user {username} and password ***** on virtual cache directory {home_dir}")
 
         host = config.get("FTP", "host")
         if host is None:
