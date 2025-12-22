@@ -8,13 +8,14 @@ from .core import *
 from .server import PDF_FTPServer
 
 logger.info(f"Loading pyPDFserver version {__version__}")
-
-debug()
+logger.debug(f"Log dir: {log.log_dir}")
+logger.debug(f"Config path: {settings.config_path}")
 
 server = PDF_FTPServer()
 
 try:
-    while cmd := input("> "):
+    while True:
+        cmd = input("> ")
         match cmd.strip().upper():
             case "exit":
                 raise KeyboardInterrupt()

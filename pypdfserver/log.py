@@ -7,7 +7,7 @@ import threading
 import types
 from logging.handlers import RotatingFileHandler
 
-from .config import config
+from .settings import config
 
 log_dir = platformdirs.user_log_path(appname="pyPDFserver", appauthor=False, ensure_exists=True)
 
@@ -63,3 +63,6 @@ def debug() -> None:
     """ Start debugging """
     logger.setLevel(logging.DEBUG)
     logger.info(f"Started debugging")
+
+if "-debug" in sys.argv:
+    debug()

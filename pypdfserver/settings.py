@@ -8,10 +8,9 @@ config = configparser.ConfigParser()
 config.read(Path(__file__).parent / "default.ini")
 config.read(config_path)
 
-from .log import logger
-
 def save() -> None:
     """ Save the config file """
+    from .log import logger
     try:
         with open(config_path, "w") as f:
             config.write(f)
@@ -19,6 +18,3 @@ def save() -> None:
         logger.error(f"Failed to save the config file:", exc_info=True)
     else:
         logger.debug(f"Saved config file to {config_path}")
-
-
-save()

@@ -20,7 +20,8 @@ dependencies = [
   "pyftpdlib>=2.1",
   "pypdf>=5.9",
   "platformdirs>=4.2",
-  "ocrmypdf>=14.4"
+  "ocrmypdf>=14.4",
+  "pyOpenSSL>=25.3"
 ]
 
 [tool.hatch.version]
