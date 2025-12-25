@@ -4,7 +4,9 @@ from .core import *
 import hashlib
 import platformdirs
 import tempfile
+import shutil
 import pyftpdlib.log
+from pathlib import Path
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.handlers import FTPHandler
 try:
@@ -28,9 +30,10 @@ class FTPAuthorizer(DummyAuthorizer):
 class PDF_FTPHandler(FTPHandler):
 
     banner = "pyPDFserver"
+    _temp_dir_prefix = "pyPDFserver_tmp_"
 
     def on_connect(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_tmp_")
+        self.temp_dir = tempfile.TemporaryDirectory(prefix=PDF_FTPHandler._temp_dir_prefix)
         if self.fs is not None:
             self.fs.chdir(self.temp_dir)
         logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected to temporary directory {self.temp_dir}")
@@ -41,14 +44,15 @@ class PDF_FTPHandler(FTPHandler):
         logger.debug(f"Client {self.remote_ip}:{self.remote_port} disconected. Removing temporary directory {self.temp_dir}")
         self.temp_dir.cleanup()
 
-    def on_file_received(self, file: str):
+    def on_file_received(self, file: str) -> None:
         super().on_file_received(file)
         logger.debug(f"Received file '{file}'")
-
 
 class PDF_FTPServer:
 
     def __init__(self) -> None:
+        self.clear() # Perform artifact cleaning first
+
         username = config.get("FTP", "username", fallback=None)
         if username is None:
             raise ConfigError(f"Missing field 'username' in section 'FTP' in the given config file")
@@ -78,14 +82,6 @@ class PDF_FTPServer:
         )
         logger.debug(f"Created user {username} and password ***** on virtual cache directory {home_dir}")
 
-        tls_enabled = False
-        try:
-            tls_enabled = config.getboolean("TLS", "enabled")
-        except KeyError:
-            ConfigError(f"Missing field 'enabled' in section TLS")
-        except ValueError:
-            ConfigError(f"Invalid boolean value for field 'enabled' in section TLS")
-
         host = config.get("FTP", "host")
         if host == "":
             logger.info(f"No host set. Defaulting to 127.0.0.1")
@@ -96,12 +92,8 @@ class PDF_FTPServer:
         except ValueError:
             port = -1
         if port <= 0 or port >= 2**16:
-            if tls_enabled:
-                logger.info(f"No or invalid port set. Defaulting to 22")
-                port = 22
-            else:
-                logger.info(f"No or invalid port set. Defaulting to 21")
-                port = 21
+            logger.info(f"No or invalid port set. Defaulting to 21")
+            port = 21
     
 
         handler = PDF_FTPHandler
@@ -120,3 +112,17 @@ class PDF_FTPServer:
         if self.thread.is_alive():
             self.server.close_all()
             logger.debug(f"Stopped the FTP server")
+
+    def clear(self) -> None:
+        """ 
+        Clears all not automatically cleared temp files. Note that this only occurs when pyPDFserver
+        is hard interupted
+        """
+        temp_dir = Path(tempfile.gettempdir())
+        if not temp_dir.exists():
+            logger.warning(f"The extracted temp dir at {temp_dir} does not exist")
+            return
+        for f in [p for p in temp_dir.glob(f"{PDF_FTPHandler._temp_dir_prefix}*") if p.is_dir()]:
+            # TODO: Actually delete the file
+            #shutil.rmtree(f)
+            logger.warning(f"Removed artifact temp folder '{f.name}'")

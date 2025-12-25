@@ -28,7 +28,15 @@ def run():
                     print(f"Invalid command '{cmd}'")
     except (KeyboardInterrupt, SystemExit):
         logger.info(f"Stopping pyPDFserver")
+        try:
+            server.stop()
+        except Exception as ex:
+            logger.error(f"Failed to stop the FTP server: ", exc_info=True)
     except ConfigError as ex:
         logger.error(ex.msg)
         logger.warning(f"Terminating pyPDFserver")
+        try:
+            server.stop()
+        except Exception as ex:
+            logger.error(f"Failed to stop the FTP server: ", exc_info=True)
     exit()
