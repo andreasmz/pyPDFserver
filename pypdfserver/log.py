@@ -16,7 +16,7 @@ logger.setLevel(logging.INFO)
 
 _formatter = logging.Formatter('[%(asctime)s %(levelname)s]: %(message)s')
 
-_stream_handler = logging.StreamHandler(stream=sys.stdout)
+_stream_handler = logging.StreamHandler(stream=sys.stderr)
 _stream_handler.setFormatter(_formatter)
 _stream_handler.setLevel(logging.DEBUG)
 logger.addHandler(_stream_handler)

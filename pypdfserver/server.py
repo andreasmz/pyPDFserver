@@ -30,27 +30,7 @@ class PDF_FTPHandler(FTPHandler):
     banner = "pyPDFserver"
 
     def on_connect(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_")
-        if self.fs is not None:
-            self.fs.chdir(self.temp_dir)
-        logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected to temporary directory {self.temp_dir}")
-        super().on_connect()    
-
-    def on_disconnect(self) -> None:
-        super().on_disconnect()
-        logger.debug(f"Client {self.remote_ip}:{self.remote_port} disconected. Removing temporary directory {self.temp_dir}")
-        self.temp_dir.cleanup()
-
-    def on_file_received(self, file: str):
-        super().on_file_received(file)
-        logger.debug(f"Received file '{file}'")
-
-class PDF_TLS_FTPHandler(TLS_FTPHandler):
-
-    banner = PDF_FTPHandler.banner
-
-    def on_connect(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_")
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_tmp_")
         if self.fs is not None:
             self.fs.chdir(self.temp_dir)
         logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected to temporary directory {self.temp_dir}")
@@ -124,10 +104,7 @@ class PDF_FTPServer:
                 port = 21
     
 
-        if tls_enabled:
-            handler = PDF_TLS_FTPHandler
-        else:
-            handler = PDF_FTPHandler
+        handler = PDF_FTPHandler
         handler.authorizer = authorizer
         
         self.server = FTPServer((host, port), handler)
@@ -138,3 +115,8 @@ class PDF_FTPServer:
     def _loop(self) -> None:
         self.server.serve_forever()
 
+    def stop(self) -> None:
+        """ Stop the server """
+        if self.thread.is_alive():
+            self.server.close_all()
+            logger.debug(f"Stopped the FTP server")

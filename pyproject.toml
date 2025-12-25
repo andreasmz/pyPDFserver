@@ -21,7 +21,8 @@ dependencies = [
   "pypdf>=5.9",
   "platformdirs>=4.2",
   "ocrmypdf>=14.4",
-  "pyOpenSSL>=25.3"
+  "pyOpenSSL>=25.3",
+  "prompt-toolkit>=3.0.52"
 ]
 
 [tool.hatch.version]
