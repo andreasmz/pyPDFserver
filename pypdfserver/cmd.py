@@ -13,6 +13,7 @@ session = PromptSession("> ", completer=completer)
 
 def run():
     from . import __version__, server
+    server = PDF_FTPServer()
     try:
         while True:
             cmd: str = session.prompt()

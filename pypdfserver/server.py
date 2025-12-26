@@ -1,11 +1,11 @@
 from .core import *
-#from .pdf_worker import task_queue, Job
 
 import hashlib
 import platformdirs
-import tempfile
-import shutil
 import pyftpdlib.log
+import re
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.handlers import FTPHandler
@@ -32,6 +32,11 @@ class PDF_FTPHandler(FTPHandler):
     banner = "pyPDFserver"
     _temp_dir_prefix = "pyPDFserver_tmp_"
 
+    def __init__(self, conn, server: "PDF_FTPServer", ioloop=None):
+        super().__init__(conn, server, ioloop)
+        self.server = server
+        self.duplex_pdf_cache: None|tuple[str, datetime] = None
+
     def on_connect(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory(prefix=PDF_FTPHandler._temp_dir_prefix)
         if self.fs is not None:
@@ -48,7 +53,28 @@ class PDF_FTPHandler(FTPHandler):
         super().on_file_received(file)
         logger.debug(f"Received file '{file}'")
 
+        if (r := self.server.duplex1_regex.match(file)):
+            logger.info(f"Received duplex front pages '{file}'")
+            if self.duplex_pdf_cache is not None:
+                logger.info(f"Discarding previous duplex pront pages '{self.duplex_pdf_cache[0]}'")
+            self.duplex_pdf_cache = (file, datetime.now())
+        elif (r := self.server.duplex2_regex.match(file)):
+            
+            if self.duplex_pdf_cache is None:
+                logger.info(f"Received duplex back pages '{file}', but discarded them as the pront pages are missing")
+                return
+            elif (d := (datetime.now() - self.duplex_pdf_cache[1])).total_seconds() > self.server.duplex_timeout:
+                logger.info(f"Received duplex back pages '{file}', but discarded them due to timeout (first file received {d.total_seconds()} ago)")
+                return
+            
+
+
 class PDF_FTPServer:
+
+    TEMPLATE_STRINGS: dict[str, str] = {
+        "%lang%": r"(?P<lang>[a-zA-Z]+)",
+        "%s%": r"(?P<s>.*)",
+    }
 
     def __init__(self) -> None:
         self.clear() # Perform artifact cleaning first
@@ -100,6 +126,42 @@ class PDF_FTPServer:
         handler.authorizer = authorizer
         
         self.server = FTPServer((host, port), handler)
+
+        scan_template = config.get("FILE_NAMES", "input_scan", fallback=None)
+        if scan_template is None:
+            raise ConfigError(f"Missing field 'input_scan' in section 'FILE_NAME'")
+        scan_template = re.escape(scan_template)
+        for k, v in PDF_FTPServer.TEMPLATE_STRINGS.items():
+            scan_template = scan_template.replace(k, v)
+        self.scan_regex = re.compile(scan_template)
+
+        duplex1_template = config.get("FILE_NAMES", "input_duplex1", fallback=None)
+        if duplex1_template is None:
+            raise ConfigError(f"Missing field 'input_duplex1' in section 'FILE_NAME'")
+        duplex1_template = re.escape(duplex1_template)
+        for k, v in PDF_FTPServer.TEMPLATE_STRINGS.items():
+            duplex1_template = duplex1_template.replace(k, v)
+        self.duplex1_regex = re.compile(duplex1_template)
+
+        duplex2_template = config.get("FILE_NAMES", "input_duplex2", fallback=None)
+        if duplex2_template is None:
+            raise ConfigError(f"Missing field 'input_duplex2' in section 'FILE_NAME'")
+        duplex2_template = re.escape(duplex2_template)
+        for k, v in PDF_FTPServer.TEMPLATE_STRINGS.items():
+            duplex2_template = duplex2_template.replace(k, v)
+        self.duplex2_regex = re.compile(duplex2_template)
+
+        self.export_template = config.get("FILE_NAMES", "export_name", fallback=None)
+        if self.export_template is None:
+            raise ConfigError(f"Missing field 'export_name' in section 'FILE_NAME'")
+        
+        try:
+            duplex_timeout = config.getint("SETTINGS", "duplex_timeout", fallback=None)
+        except ValueError:
+            duplex_timeout = None
+        if duplex_timeout is None:
+            raise ConfigError(f"Missing or invalid field 'duplex_timeout' in section 'SETTINGS'")
+        self.duplex_timeout = max(0, duplex_timeout)
 
         self.thread = Thread(target=self._loop, name="PDF_FTPServer_main", daemon=True)
         self.thread.start()
