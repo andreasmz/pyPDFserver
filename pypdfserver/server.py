@@ -51,14 +51,15 @@ class PDF_FTPHandler(FTPHandler):
 
     def on_file_received(self, file: str) -> None:
         super().on_file_received(file)
-        logger.debug(f"Received file '{file}'")
+        path = Path(file)
+        logger.debug(f"Received file '{path.name}'")
 
-        if (r := self.server.duplex1_regex.match(file)):
-            logger.info(f"Received duplex front pages '{file}'")
+        if (r := self.server.duplex1_regex.match(path.name)):
+            logger.info(f"Received duplex front pages '{path.name}'")
             if self.duplex_pdf_cache is not None:
                 logger.info(f"Discarding previous duplex pront pages '{self.duplex_pdf_cache[0]}'")
-            self.duplex_pdf_cache = (file, datetime.now())
-        elif (r := self.server.duplex2_regex.match(file)):
+            self.duplex_pdf_cache = (path.name, datetime.now())
+        elif (r := self.server.duplex2_regex.match(path.name)):
             
             if self.duplex_pdf_cache is None:
                 logger.info(f"Received duplex back pages '{file}', but discarded them as the pront pages are missing")
@@ -67,6 +68,9 @@ class PDF_FTPHandler(FTPHandler):
                 logger.info(f"Received duplex back pages '{file}', but discarded them due to timeout (first file received {d.total_seconds()} ago)")
                 return
             
+        else:
+            with open(file, "rb") as f:
+                data = f.read()      
 
 
 class PDF_FTPServer:
@@ -77,7 +81,7 @@ class PDF_FTPServer:
     }
 
     def __init__(self) -> None:
-        self.clear() # Perform artifact cleaning first
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_tmp", delete=False)
 
         username = config.get("FTP", "username", fallback=None)
         if username is None:
@@ -175,7 +179,11 @@ class PDF_FTPServer:
             self.server.close_all()
             logger.debug(f"Stopped the FTP server")
 
-    def clear(self) -> None:
+    def __del__(self) -> None:
+        self.temp_dir.cleanup()
+        logger.debug(f"Cleared temporary directory")
+
+    def force_clear(self) -> None:
         """ 
         Clears all not automatically cleared temp files. Note that this only occurs when pyPDFserver
         is hard interupted
@@ -188,3 +196,4 @@ class PDF_FTPServer:
             # TODO: Actually delete the file
             #shutil.rmtree(f)
             logger.warning(f"Removed artifact temp folder '{f.name}'")
+

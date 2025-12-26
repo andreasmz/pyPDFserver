@@ -3,6 +3,7 @@ import ocrmypdf
 import ocrmypdf.exceptions
 import pypdf
 import pypdf.errors
+import tempfile
 import threading
 import uuid
 from datetime import datetime, timedelta
@@ -11,6 +12,7 @@ from io import BytesIO
 from multiprocessing import Process
 from pathlib import Path
 from queue import Queue, Empty
+from typing import BinaryIO
 
 from .core import *
 
@@ -29,13 +31,15 @@ class Task:
         self.state = TaskState.SCHEDULED
         self.uuid = str(uuid.uuid4())
         self.dependencies: list[Task] = []
+        self.childrens: list[Task] = []
         self.t_created: datetime = datetime.now()
         self.t_start: datetime|None = None
         self.t_end: datetime|None = None
+        self.dependencies_artificats: dict[str, BinaryIO] = {}
 
-    def run(self) -> None:
+    def run(self, artificats: list[BinaryIO]) -> list[BinaryIO]:
         """ Called when a Task is executed """
-        pass
+        raise NotImplementedError(f"The given task does not implement a run() method")
 
     def __repr__(self) -> str:
         return f"<{str(self)}>"
@@ -48,6 +52,19 @@ class Task:
             return None
         return self.t_end - self.t_start
     
+    def send_artifacts_to(self, other_task: "Task") -> None:
+        other_task.dependencies.append(self)
+        self.childrens.append(other_task)
+
+    def put(self, **f_handles: BinaryIO) -> None:  
+        for name, f_handle in f_handles.items():
+            for c in self.childrens:
+                temp_file = tempfile.TemporaryFile(prefix="pyPDFserver_artifact")
+                temp_file.write(f_handle.read())
+                c.dependencies_artificats[name] = temp_file
+        
+
+    
 class TaskException(Exception):
     """ Should be raise inside a Task's run() function when an expected error happens """
 
@@ -56,6 +73,9 @@ class TaskException(Exception):
         self.message = message
 
 class UploadTask(Task):
+    """
+    Upload an file to an external FTP server
+    """
 
     def __init__(self, 
                  file: Path, 
@@ -72,17 +92,17 @@ class UploadTask(Task):
         self.folder = folder
         self.tls = tls
         self.source_address = source_address
-        
+
+        with open(self.file, "rb") as f:
+            self.bytes = BytesIO(f.read())
 
     def run(self) -> None:
-        if not self.file.exists():
-            raise TaskException(f"File '{self.file}' does not exit")
         if self.tls:
             ftp = ftplib.FTP_TLS()
         else:
             ftp = ftplib.FTP()
         try:
-            ftp.connect(self.address[0], self.address[1], source_address=self.source_address)
+            ftp.connect(self.address[0], self.address[1], timeout=30, source_address=self.source_address)
             if isinstance(ftp, ftplib.FTP_TLS):
                 ftp.auth()
                 ftp.prot_p()
@@ -94,12 +114,12 @@ class UploadTask(Task):
             if self.file.name in files:
                 raise TaskException(f"File already present on the server")
             
-            with open(self.file, "rb") as f:
-                ftp.storbinary(f"STOR {self.file.name}", f)
+            ftp.storbinary(f"STOR {self.file.name}", self.bytes)
             logger.info(f"Uploaded file '{self.file.name}' to the server")
         except ftplib.all_errors as ex:
             raise TaskException(f"Failed to upload the file: {str(ex)}")
         finally:
+            self.bytes.close()
             ftp.close()    
 
     def __str__(self) -> str:
@@ -113,9 +133,12 @@ class PDFTask(Task):
         self.reader: pypdf.PdfReader|None = None
         self.num_pages: int|None = None
 
+        with open(self.file, "rb") as f:
+            self.bytes = BytesIO(f.read())
+
     def run(self) -> None:
         try:
-            self.reader = pypdf.PdfReader(self.file)
+            self.reader = pypdf.PdfReader(self.bytes)
             self.num_pages = self.reader.get_num_pages()
         except pypdf.errors.PyPdfError as ex:
             logger.warning(f"Failed to decode '{self.file.name}': {str(ex)}")
@@ -137,7 +160,6 @@ class OCRTask(Task):
         self.rotate_pages = rotate_pages
         self.Tasks = Tasks
         self.tesseract_timeout = tesseract_timeout
-        
 
     def run(self) -> None:
         try:
@@ -266,10 +288,12 @@ def clean_up() -> None:
             logger.debug(f"Task '{str(t)}' timed out")
 
 def run() -> None:
-    global process
+    """ Start the server loop """
     process.start()
 
 def abort() -> None:
+    """ Abort the current task by terminating the current process loop and restarting it """
+    # Use thread to join the thread (as terminate does not wait)
     def _terminate() -> None:
         process.terminate()
         process.join()
