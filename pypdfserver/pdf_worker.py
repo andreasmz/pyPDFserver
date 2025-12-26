@@ -3,10 +3,12 @@ import ocrmypdf
 import ocrmypdf.exceptions
 import pypdf
 import pypdf.errors
+import threading
 import uuid
 from datetime import datetime, timedelta
 from enum import Enum
 from io import BytesIO
+from multiprocessing import Process
 from pathlib import Path
 from queue import Queue, Empty
 
@@ -27,6 +29,7 @@ class Task:
         self.state = TaskState.SCHEDULED
         self.uuid = str(uuid.uuid4())
         self.dependencies: list[Task] = []
+        self.t_created: datetime = datetime.now()
         self.t_start: datetime|None = None
         self.t_end: datetime|None = None
 
@@ -45,29 +48,6 @@ class Task:
             return None
         return self.t_end - self.t_start
     
-class TaskStack(Task):
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.stack: list[Task] = []
-
-    def run(self) -> None:
-        for t in self.stack:
-            if t.state != TaskState.SCHEDULED:
-                    logger.debug(f"Unexpected TaskState {t.state} for task {t} in Task stack {str(self)}")
-                    continue
-            t.state = TaskState.RUNNING
-            try:
-                t.run()
-            except TaskException as ex:
-                t.state = TaskState.FAILED
-                logger.info(f"{str(t)}: {ex.message}")
-            except Exception as ex:
-                t.state = TaskState.FAILED
-                logger.warning(f"{str(t)}: Failed to process the Task", exc_info=True)
-            else:
-                t.state = TaskState.FINISHED
-
 class TaskException(Exception):
     """ Should be raise inside a Task's run() function when an expected error happens """
 
@@ -198,6 +178,8 @@ def loop() -> None:
     while True:
         task = None
 
+        clean_up()
+
         # Check first if a waiting task has failed dependencies (move it to finished task list) or is ready for scheduling (put to priority queue)
         for t in task_waiting_list.copy():
             task_ready = True
@@ -272,10 +254,30 @@ def loop() -> None:
 
         task = None
 
-def abort() -> None:
-    pass
-
 def clean_up() -> None:
-    """ Clean up the task queues. Can be called anytime """
-    for t in task_finished:
-        if t.t_end is None:
+    """ Clean up the task lists """
+    for t in task_finished.copy():
+        if (datetime.now() - t.t_created).total_seconds() > (60*60):
+            task_finished.remove(t)
+            logger.debug(f"Task '{str(t)}' timed out")
+    for t in task_waiting_list.copy():
+        if (datetime.now() - t.t_created).total_seconds() > (60*60):
+            task_waiting_list.remove(t)
+            logger.debug(f"Task '{str(t)}' timed out")
+
+def run() -> None:
+    global process
+    process.start()
+
+def abort() -> None:
+    def _terminate() -> None:
+        process.terminate()
+        process.join()
+        if task is not None:
+            task.state = TaskState.ABORTED
+        run()
+    if not process.is_alive():
+        return
+    threading.Thread(target=_terminate, name="Abort pdf server loop").run()
+
+process = Process(target=loop)
