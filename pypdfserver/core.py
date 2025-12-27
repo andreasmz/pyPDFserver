@@ -1,7 +1,8 @@
-from pypdfserver.settings import save as save_config
 from . import log, settings
 from .log import logger, debug
-from .settings import config, profiles_config
+from .settings import config, profiles_config, save as save_config
+
+import shutil
 import tempfile
 from pathlib import Path
 import atexit
@@ -13,7 +14,7 @@ class ConfigError(Exception):
         super().__init__()
         self.msg = msg
 
-def clean_temp() -> None:
+def clean_full() -> None:
     """ Clear previously created, not delete temporary folder """
 
     temp_dir = Path(tempfile.gettempdir())
@@ -22,12 +23,12 @@ def clean_temp() -> None:
         return
     for f in [p for p in temp_dir.glob(f"pyPDFserver*") if p.is_dir()]:
         # TODO: Actually delete the file
-        #shutil.rmtree(f)
-        logger.warning(f"Removed old temporary working folder '{f.name}'")
+        shutil.rmtree(f)
+        logger.debug(f"Removed old temporary working folder '{f.name}'")
 
-clean_temp()
+clean_full()
 
-pyPDFserver_temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver")
+pyPDFserver_temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_")
 pyPDFserver_temp_dir_path = Path(pyPDFserver_temp_dir.name)
 logger.debug(f"Temporary working directory: {pyPDFserver_temp_dir_path}")
 

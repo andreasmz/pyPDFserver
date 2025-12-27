@@ -84,8 +84,8 @@ class PDF_FTPHandler(FTPHandler):
                 t2.dependencies.append(t1)
             add_tasks(*tasks[1:])
             
-            export_name = profile.export_duplex_template.replace("%lang%", r.groups("lang")[0])
-            export_name = export_name.replace("%s%", r.groups("s")[0])
+            export_name = profile.export_duplex_template.replace("(lang)", r.groups("lang")[0])
+            export_name = export_name.replace("(*)", r.groups("s")[0])
 
             profile.duplex_pdf_cache = (tasks[-1], datetime.now(), file_name, export_name)
 
@@ -159,8 +159,8 @@ class PDF_FTPHandler(FTPHandler):
 class PDFProfile:
 
     TEMPLATE_STRINGS: dict[str, str] = {
-        "%lang%": r"(?P<lang>[a-zA-Z]+)",
-        "%s%": r"(?P<s>.*)",
+        "(lang)": r"(?P<lang>[a-zA-Z]+)",
+        "(*)": r"(?P<s>.*)",
     }
 
     def __init__(self, name: str) -> None:
@@ -177,7 +177,7 @@ class PDFProfile:
             self.password = password.strip("$").replace("SHA256$", "")
         else:
             self.password = hashlib.sha256(password.encode("utf-8")).hexdigest()
-            profiles_config.set(self.name, "password", f"$SHA256${password}$")
+            profiles_config.set(self.name, "password", f"$SHA256${self.password}$")
             save_config()
             logger.debug(f"Hashed password and saved it back to profiles")
 
@@ -217,18 +217,16 @@ class PDFProfile:
             self.ocr_tesseract_timeout = None
 
 
-        duplex1_template = profiles_config.get(self.name, "input_duplex1", fallback=None)
+        duplex1_template = profiles_config.get(self.name, "input_duplex1_name", fallback=None)
         if duplex1_template is None:
-            raise ConfigError(f"Missing field 'input_duplex1' in section '{self.name}'")
-        duplex1_template = re.escape(duplex1_template)
+            raise ConfigError(f"Missing field 'input_duplex1_name' in section '{self.name}'")
         for k, v in PDFProfile.TEMPLATE_STRINGS.items():
             duplex1_template = duplex1_template.replace(k, v)
         self.duplex1_regex = re.compile(duplex1_template)
 
-        duplex2_template = profiles_config.get(self.name, "input_duplex2", fallback=None)
+        duplex2_template = profiles_config.get(self.name, "input_duplex2_name", fallback=None)
         if duplex2_template is None:
-            raise ConfigError(f"Missing field 'input_duplex2' in section '{self.name}'")
-        duplex2_template = re.escape(duplex2_template)
+            raise ConfigError(f"Missing field 'input_duplex2_name' in section '{self.name}'")
         for k, v in PDFProfile.TEMPLATE_STRINGS.items():
             duplex2_template = duplex2_template.replace(k, v)
         self.duplex2_regex = re.compile(duplex2_template)
@@ -309,7 +307,7 @@ class PDF_FTPServer:
 class ExportFTP:
 
     def __init__(self) -> None:
-        self.host = config.get("EXPORT_FTP_SERVER", "host", fallback="None")
+        self.host = config.get("EXPORT_FTP_SERVER", "host", fallback="")
         if self.host == "":
             raise ConfigError(f"Missing field 'host' in section 'EXPORT_FTP_SERVER'")
 

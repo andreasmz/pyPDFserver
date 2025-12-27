@@ -13,8 +13,9 @@ session = PromptSession("> ", completer=completer)
 
 def run():
     from . import __version__, server
-    server = PDF_FTPServer()
+    
     try:
+        server = PDF_FTPServer()
         while True:
             cmd: str = session.prompt()
             match cmd.strip().lower():
