@@ -2,7 +2,6 @@ from .core import *
 from .pdf_worker import *
 
 import hashlib
-import platformdirs
 import pyftpdlib.log
 import re
 import tempfile
@@ -33,14 +32,14 @@ class FTPAuthorizer(DummyAuthorizer):
 class PDF_FTPHandler(FTPHandler):
 
     banner = "pyPDFserver"
-    _temp_dir_prefix = "pyPDFserver_tmp_"
 
     def __init__(self, conn, server: "PDF_FTPServer", ioloop=None):
         super().__init__(conn, server, ioloop)
         self.server = server
 
     def on_connect(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory(prefix=PDF_FTPHandler._temp_dir_prefix)
+        temp_dir = Path(pyPDFserver_temp_dir_path / "clients").mkdir(exist_ok=True, parents=False)
+        self.temp_dir = tempfile.TemporaryDirectory(temp_dir, prefix="ftp_client")
         if self.fs is not None:
             self.fs.chdir(self.temp_dir)
         logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected to temporary directory {self.temp_dir}")
@@ -217,13 +216,6 @@ class PDFProfile:
         if self.ocr_tesseract_timeout <= 0:
             self.ocr_tesseract_timeout = None
 
-        # scan_template = profiles_config.get(self.name, "inpurt_name", fallback=None)
-        # if scan_template is None:
-        #     raise ConfigError(f"Missing field 'inpurt_name' in section '{self.name}'")
-        # scan_template = re.escape(scan_template)
-        # for k, v in PDFProfile.TEMPLATE_STRINGS.items():
-        #     scan_template = scan_template.replace(k, v)
-        # self.scan_regex = re.compile(scan_template)
 
         duplex1_template = profiles_config.get(self.name, "input_duplex1", fallback=None)
         if duplex1_template is None:
@@ -241,16 +233,13 @@ class PDFProfile:
             duplex2_template = duplex2_template.replace(k, v)
         self.duplex2_regex = re.compile(duplex2_template)
 
-        # self.export_template = profiles_config.get(self.name, "export_name", fallback=None)
-        # if self.export_template is None:
-        #     raise ConfigError(f"Missing field 'export_name' in section '{self.name}'")
-        
         export_duplex_template = profiles_config.get(self.name, "export_duplex_name", fallback=None)
         if export_duplex_template is None:
             raise ConfigError(f"Missing field 'export_duplex_name' in section '{self.name}'")
         self.export_duplex_template = export_duplex_template
         
-        self.duplex_pdf_cache: None|tuple[Task, datetime, str, str] = None
+
+        self.duplex_pdf_cache: None|tuple[Task, datetime, str, str] = None # Task, datetime, file_name, export_name
 
 
 class PDF_FTPServer:
