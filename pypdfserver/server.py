@@ -56,17 +56,17 @@ class PDF_FTPHandler(FTPHandler):
         profile = self.server.profiles[self.username]
         path = Path(file)
         file_name = path.name
-        logger.debug(f"Received file '{file_name}' by user '{self.username}'")
+        logger.info(f"Received file '{file_name}' by user '{self.username}'")
 
         artifact = FileArtifact(None, file_name)
         with open(path, "rb") as f_upload:
             with open(artifact.path, "wb+") as f_artifact:
                 f_artifact.write(f_upload.read())
 
-        if (r := profile.duplex1_regex.match(file_name)):
+        if (r := profile.duplex1_regex.match(file_name)) is not None:
             logger.info(f"Received duplex front pages '{file_name}'")
             if profile.duplex_pdf_cache is not None:
-                logger.info(f"Discarding previous duplex pront pages '{profile.duplex_pdf_cache[0].name}'")
+                logger.info(f"Discarding previous duplex pront pages '{profile.duplex_pdf_cache[2]}'")
 
             tasks: list[Task] = [Task()]
             tasks[0].artifacts["export"] = artifact
@@ -80,9 +80,16 @@ class PDF_FTPHandler(FTPHandler):
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout
                                      ))
+            tasks.append(PDFTask(cast(FileArtifact, tasks[-1].artifacts["export"]), file_name))
+            for t1, t2 in zip(tasks[1:], tasks[2:]):
+                t2.dependencies.append(t1)
+            add_tasks(*tasks[1:])
+            
+            export_name = profile.export_duplex_template.replace("%lang%", r.groups("lang")[0])
+            export_name = export_name.replace("%s%", r.groups("s")[0])
 
+            profile.duplex_pdf_cache = (tasks[-1], datetime.now(), file_name, export_name)
 
-            profile.duplex_pdf_cache = (artifact, datetime.now())
         elif (r := profile.duplex2_regex.match(file_name)):
             
             if profile.duplex_pdf_cache is None:
@@ -91,6 +98,38 @@ class PDF_FTPHandler(FTPHandler):
             elif (d := (datetime.now() - profile.duplex_pdf_cache[1])).total_seconds() > self.server.duplex_timeout:
                 logger.info(f"Received duplex back pages '{file_name}', but discarded them due to timeout (first file received {d.total_seconds()} ago)")
                 return
+            
+            tasks: list[Task] = [Task()]
+            tasks[0].artifacts["export"] = artifact
+            if profile.ocr_enabled:
+                tasks.append(OCRTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
+                                     file_name=file_name, 
+                                     language="", 
+                                     optimize=profile.ocr_optimize, 
+                                     deskew=profile.ocr_deskew, 
+                                     rotate_pages=profile.ocr_rotate_pages,
+                                     num_jobs=1,
+                                     tesseract_timeout=profile.ocr_tesseract_timeout
+                                     ))
+            tasks.append(PDFTask(cast(FileArtifact, tasks[-1].artifacts["export"]), file_name))
+            tasks.append(DuplexTask(
+                cast(FileArtifact, profile.duplex_pdf_cache[0].artifacts["export"]),
+                cast(FileArtifact, tasks[-1].artifacts["export"]),
+                file1_name=profile.duplex_pdf_cache[2],
+                file2_name=file_name,
+                export_name=profile.duplex_pdf_cache[3]
+            ))
+            tasks.append(UploadToFTPTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
+                file_name,
+                address=(self.server.export_config.host, self.server.export_config.port),
+                username=self.server.export_config.username,
+                password=self.server.export_config.password,
+                folder=self.server.export_config.destination_path,
+                tls=True,
+            ))
+            for t1, t2 in zip(tasks[1:], tasks[2:]):
+                t2.dependencies.append(t1)
+            add_tasks(*tasks[1:])
             
         else: # Common scan file
             tasks: list[Task] = [Task()]
@@ -178,13 +217,13 @@ class PDFProfile:
         if self.ocr_tesseract_timeout <= 0:
             self.ocr_tesseract_timeout = None
 
-        scan_template = profiles_config.get(self.name, "inpurt_name", fallback=None)
-        if scan_template is None:
-            raise ConfigError(f"Missing field 'inpurt_name' in section '{self.name}'")
-        scan_template = re.escape(scan_template)
-        for k, v in PDFProfile.TEMPLATE_STRINGS.items():
-            scan_template = scan_template.replace(k, v)
-        self.scan_regex = re.compile(scan_template)
+        # scan_template = profiles_config.get(self.name, "inpurt_name", fallback=None)
+        # if scan_template is None:
+        #     raise ConfigError(f"Missing field 'inpurt_name' in section '{self.name}'")
+        # scan_template = re.escape(scan_template)
+        # for k, v in PDFProfile.TEMPLATE_STRINGS.items():
+        #     scan_template = scan_template.replace(k, v)
+        # self.scan_regex = re.compile(scan_template)
 
         duplex1_template = profiles_config.get(self.name, "input_duplex1", fallback=None)
         if duplex1_template is None:
@@ -202,15 +241,16 @@ class PDFProfile:
             duplex2_template = duplex2_template.replace(k, v)
         self.duplex2_regex = re.compile(duplex2_template)
 
-        self.export_template = profiles_config.get(self.name, "export_name", fallback=None)
-        if self.export_template is None:
-            raise ConfigError(f"Missing field 'export_name' in section '{self.name}'")
+        # self.export_template = profiles_config.get(self.name, "export_name", fallback=None)
+        # if self.export_template is None:
+        #     raise ConfigError(f"Missing field 'export_name' in section '{self.name}'")
         
-        self.export_duplex_template = profiles_config.get(self.name, "export_duplex_name", fallback=None)
-        if self.export_duplex_template is None:
+        export_duplex_template = profiles_config.get(self.name, "export_duplex_name", fallback=None)
+        if export_duplex_template is None:
             raise ConfigError(f"Missing field 'export_duplex_name' in section '{self.name}'")
+        self.export_duplex_template = export_duplex_template
         
-        self.duplex_pdf_cache: None|tuple[FileArtifact, datetime] = None
+        self.duplex_pdf_cache: None|tuple[Task, datetime, str, str] = None
 
 
 class PDF_FTPServer:
