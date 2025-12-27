@@ -1,5 +1,6 @@
 from .core import *
-from .pdf_worker import *
+from .pdf_worker import Task, PDFTask, OCRTask, DuplexTask, UploadToFTPTask, Artifact, FileArtifact
+from . import pdf_worker
 
 import hashlib
 import pyftpdlib.log
@@ -20,34 +21,35 @@ class PDFAuthorizer(DummyAuthorizer):
     """ Extend the Dummy Authorizer class with hashed password storage """
 
     def validate_authentication(self, username: str, password: str, handler):
-        logger.debug(f"{password}, {hashlib.sha256(password.encode("utf-8")).hexdigest()}")
         return super().validate_authentication(username, hashlib.sha256(password.encode("utf-8")).hexdigest(), handler)
 
 
 class PDF_FTPHandler(FTPHandler):
 
     banner = "pyPDFserver"
+    server: "PDF_FTPServer"
 
-    def __init__(self, conn, server: "PDF_FTPServer", ioloop=None):
+    def __init__(self, conn, server, ioloop=None):
         super().__init__(conn, server, ioloop)
-        self.server = server
 
     def on_connect(self) -> None:
-        temp_dir = Path(pyPDFserver_temp_dir_path / "clients").mkdir(exist_ok=True, parents=False)
-        self.temp_dir = tempfile.TemporaryDirectory(temp_dir, prefix="ftp_client_")
+        temp_dir = pyPDFserver_temp_dir_path / "clients"
+        temp_dir.mkdir(exist_ok=True, parents=False)
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(temp_dir), prefix="ftp_client_")
+        self.temp_path = Path(self.temp_dir.name)
         if self.fs is not None:
             self.fs.chdir(self.temp_dir)
-        logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected (temporary directory {self.temp_dir})")
+        logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected (temporary directory {self.temp_path.name})")
         super().on_connect()    
 
     def on_disconnect(self) -> None:
         super().on_disconnect()
-        logger.debug(f"Client {self.remote_ip}:{self.remote_port} disconected. Removing temporary directory {self.temp_dir}")
+        logger.debug(f"Client {self.remote_ip}:{self.remote_port} disconected. Removing temporary directory {self.temp_path.name}")
         self.temp_dir.cleanup()
 
     def on_file_received(self, file: str) -> None:
         super().on_file_received(file)
-        profile = self.server.profiles[self.username]
+        profile = PDF_FTPHandler.server.profiles[self.username]
         path = Path(file)
         file_name = path.name
 
@@ -58,6 +60,10 @@ class PDF_FTPHandler(FTPHandler):
             with open(artifact.path, "wb+") as f_artifact:
                 f_artifact.write(f_upload.read())
         path.unlink()
+
+        if not path.suffix.lower() == ".pdf":
+            logger.info(f"Discarded file '{file_name}' because it is no PDF file")
+            return
 
         if (r := profile.duplex1_regex.match(file_name)) is not None:
             logger.info(f"Received duplex front pages '{file_name}' by user '{self.username}'")
@@ -76,7 +82,7 @@ class PDF_FTPHandler(FTPHandler):
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout
                                      ))
-            add_tasks(*tasks[1:])
+            pdf_worker.add_tasks(*tasks[1:])
             
             export_name = profile.export_duplex_template.replace("(lang)", r.groups("lang")[0])
             export_name = export_name.replace("(*)", r.groups("s")[0])
@@ -88,7 +94,7 @@ class PDF_FTPHandler(FTPHandler):
             if profile.duplex_pdf_cache is None:
                 logger.info(f"Received duplex back pages '{file_name}', but discarded them as the pront pages are missing")
                 return
-            elif (d := (datetime.now() - profile.duplex_pdf_cache[1])).total_seconds() > self.server.duplex_timeout:
+            elif (d := (datetime.now() - profile.duplex_pdf_cache[1])).total_seconds() > PDF_FTPHandler.server.duplex_timeout:
                 logger.info(f"Received duplex back pages '{file_name}', but discarded them due to timeout (first file received {d.total_seconds()} ago)")
                 profile.duplex_pdf_cache = None
                 return
@@ -119,15 +125,15 @@ class PDF_FTPHandler(FTPHandler):
                 tasks[-1].dependencies.append(profile.duplex_pdf_cache[0])
             tasks.append(UploadToFTPTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
                 file_name,
-                address=(self.server.export_config.host, self.server.export_config.port),
-                username=self.server.export_config.username,
-                password=self.server.export_config.password,
+                address=(PDF_FTPHandler.server.export_config.host, PDF_FTPHandler.server.export_config.port),
+                username=PDF_FTPHandler.server.export_config.username,
+                password=PDF_FTPHandler.server.export_config.password,
                 folder=profile.export_path,
                 tls=True,
             ))
             for t1, t2 in zip(tasks[1:], tasks[2:]):
                 t2.dependencies.append(t1)
-            add_tasks(*tasks[1:])
+            pdf_worker.add_tasks(*tasks[1:])
             
         else: # Common scan file
             logger.info(f"Received file '{file_name}' by user '{self.username}'")
@@ -146,15 +152,15 @@ class PDF_FTPHandler(FTPHandler):
             tasks.append(PDFTask(cast(FileArtifact, tasks[-1].artifacts["export"]), file_name))
             tasks.append(UploadToFTPTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
                 file_name,
-                address=(self.server.export_config.host, self.server.export_config.port),
-                username=self.server.export_config.username,
-                password=self.server.export_config.password,
+                address=(PDF_FTPHandler.server.export_config.host, PDF_FTPHandler.server.export_config.port),
+                username=PDF_FTPHandler.server.export_config.username,
+                password=PDF_FTPHandler.server.export_config.password,
                 folder=profile.export_path,
                 tls=True,
             ))
             for t1, t2 in zip(tasks[1:], tasks[2:]):
                 t2.dependencies.append(t1)
-            add_tasks(*tasks[1:])
+            pdf_worker.add_tasks(*tasks[1:])
 
 class PDFProfile:
 
@@ -290,6 +296,7 @@ class PDF_FTPServer:
 
         handler = PDF_FTPHandler
         handler.authorizer = authorizer
+        handler.server = self
 
         self.server = FTPServer((host, port), handler)
 
@@ -297,6 +304,10 @@ class PDF_FTPServer:
 
         self.thread = Thread(target=self._loop, name="PDF_FTPServer_main", daemon=True)
         self.thread.start()
+
+        pdf_worker.run()
+
+        logger.info(f"pyPDFserver started on {host}:{port} with {len(self.profiles)} profiles loaded")
 
     def _loop(self) -> None:
         self.server.serve_forever(handle_exit=True)
@@ -323,12 +334,12 @@ class ExportFTP:
             logger.info(f"No or invalid port for export FTP server set. Defaulting to 21")
             self.port = 21
 
-        username = profiles_config.get("EXPORT_FTP_SERVER", "username", fallback=None)
+        username = config.get("EXPORT_FTP_SERVER", "username", fallback=None)
         if username is None:
             raise ConfigError(f"Missing field 'username' in section 'EXPORT_FTP_SERVER'")
         self.username = username
 
-        password = profiles_config.get("EXPORT_FTP_SERVER", "password", fallback=None)
+        password = config.get("EXPORT_FTP_SERVER", "password", fallback=None)
         if password is None:
             raise ConfigError(f"Missing field 'password' in section 'EXPORT_FTP_SERVER'")
         self.password = password

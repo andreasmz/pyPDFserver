@@ -1,20 +1,13 @@
 from . import log, settings
-from .log import logger, debug
-from .settings import config, profiles_config, save as save_config
+from .log import logger, debug, ConfigError
+from .settings import config, profiles_config, save_config
 
 import shutil
 import tempfile
 from pathlib import Path
 import atexit
 
-save_config()
-
-class ConfigError(Exception):
-    def __init__(self, msg: str = "") -> None:
-        super().__init__()
-        self.msg = msg
-
-def clean_full() -> None:
+def legacy_cleanup() -> None:
     """ Clear previously created, not delete temporary folder """
 
     temp_dir = Path(tempfile.gettempdir())
@@ -25,12 +18,6 @@ def clean_full() -> None:
         shutil.rmtree(f)
         logger.debug(f"Removed old temporary working folder '{f.name}'")
 
-clean_full()
-
-pyPDFserver_temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_")
-pyPDFserver_temp_dir_path = Path(pyPDFserver_temp_dir.name)
-logger.debug(f"Temporary working directory: {pyPDFserver_temp_dir_path}")
-
 def cleanup() -> None:
     try:
         pyPDFserver_temp_dir.cleanup()
@@ -39,4 +26,15 @@ def cleanup() -> None:
     else:
         logger.debug(f"Cleared the temporary working directory")
 
+
+legacy_cleanup()
+
+pyPDFserver_temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_")
+pyPDFserver_temp_dir_path = Path(pyPDFserver_temp_dir.name)
+logger.debug(f"Temporary working directory: {pyPDFserver_temp_dir_path}")
+
 atexit.register(cleanup)
+
+logger.debug(f"Config directory: {settings.config_path}")
+
+save_config()

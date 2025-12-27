@@ -1,7 +1,7 @@
 """ Process commands to pyPDFserver """
 
 from .core import *
-from .server import *
+from .server import PDF_FTPServer
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 
@@ -11,11 +11,11 @@ session = PromptSession("> ", completer=completer)
 
 
 
-def run():
-    from . import __version__, server
+def start_pyPDFserver():
+    from . import __version__, pdf_server
     
     try:
-        server = PDF_FTPServer()
+        pdf_server = PDF_FTPServer()
         while True:
             cmd: str = session.prompt()
             match cmd.strip().lower():
@@ -24,21 +24,20 @@ def run():
                 case "version":
                     print(__version__)
                 case "reload":
-                    server.stop()
-                    server = PDF_FTPServer()
+                    pdf_server.stop()
+                    pdf_server = PDF_FTPServer()
                 case _:
                     print(f"Invalid command '{cmd}'")
     except (KeyboardInterrupt, SystemExit):
         logger.info(f"Stopping pyPDFserver")
         try:
-            server.stop()
+            if pdf_server is not None: pdf_server.stop()
         except Exception as ex:
             logger.error(f"Failed to stop the FTP server: ", exc_info=True)
     except ConfigError as ex:
-        logger.error(ex.msg)
-        logger.warning(f"Terminating pyPDFserver")
+        logger.error(f"Configuration error: {ex.msg}. Terminating pyPDFserver")
         try:
-            server.stop()
+            if pdf_server is not None: pdf_server.stop()
         except Exception as ex:
             logger.error(f"Failed to stop the FTP server: ", exc_info=True)
     exit()

@@ -31,7 +31,7 @@ class Artifact:
     artifact goes out of scope
     """
 
-    temp_dir = Path(pyPDFserver_temp_dir.name)
+    temp_dir = pyPDFserver_temp_dir_path / "artifacts"
 
     def __init__(self, task: "Task|None", name: str) -> None:
         self.task = task
@@ -51,6 +51,8 @@ class Artifact:
     def __repr__(self) -> str:
         return f"<{str(self)}>"
 
+Artifact.temp_dir.mkdir(exist_ok=True, parents=False)
+
 class FileArtifact(Artifact):
     """
     Implements a file artifact class to pass files between tasks. Access the data with the given .path attribute.
@@ -65,7 +67,7 @@ class FileArtifact(Artifact):
         if self.task is not None:
             f"task_{self.task.uuid}_{name}"
 
-        self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir / "artifacts", prefix=prefix, delete_on_close=False, delete=True)
+        self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir, prefix=prefix, suffix=".bin", delete_on_close=False, delete=True)
         self.path = Path(self._temp_file.name)
 
         self._finalizer = weakref.finalize(self, FileArtifact._cleanup, self.path, self.name, str(self.task) if self.task is not None else None)
@@ -76,6 +78,7 @@ class FileArtifact(Artifact):
             logger.error(f"Temporary file '{self.path}' is not in the temporary directory ('{Artifact.temp_dir}')")
 
     def cleanup(self) -> None:
+        logger.debug(f"Cleanup for temporary artifact '{self.name}'"+ (f" of task '{str(self.task)}'" if self.task is not None else ""))
         if not self._temp_file.closed:
             self._temp_file.close()
         if self._finalizer.alive:
@@ -93,7 +96,7 @@ class FileArtifact(Artifact):
         except Exception:
             logger.warning(f"Failed to delete temporary artifact '{name}'" + (f" of task '{task_name}'" if task_name is not None else ""))
         else:
-            logger.debug(f"Removed temporary artifact '{name}'" + (f" of task '{task_name}'" if task_name is not None else ""))
+            logger.debug(f"Garbage collected temporary artifact '{name}'" + (f" of task '{task_name}'" if task_name is not None else ""))
 
 class Task:
     """ A task can define any workload scheduled to run asynchronously in the run() method. To pass results to other tasks, use the store_artifacts() method """
@@ -119,9 +122,10 @@ class Task:
             del a
         self.artifacts = {}
 
-    def store_artifact(self, artifact: Artifact) -> None:
+    def register_artifact(self, artifact: Artifact) -> Artifact:
         """ Store an artifact to be used in other dependend tasks """
         self.artifacts[artifact.name] = artifact
+        return artifact
     
     def runtime(self) -> timedelta|None:
         if self.t_start is None or self.t_end is None:
@@ -168,7 +172,6 @@ class UploadToFTPTask(Task):
         self.tls = tls
         self.source_address = source_address
 
-
     def run(self) -> None:
         if self.tls:
             ftp = ftplib.FTP_TLS()
@@ -212,12 +215,13 @@ class PDFTask(Task):
         self.file_name = file_name
         self.num_pages: int|None = None
 
+        self.export_artifact = FileArtifact(self, "export")
+        self.register_artifact(self.export_artifact)
+
     def run(self) -> None:
         path = self.input.path if isinstance(self.input, FileArtifact) else self.input
         if not path.exists():
             raise TaskException(f"Missing input file '{self.input}'")
-        
-        export_artifact = FileArtifact(self, "export")
 
         try:
             writer = pypdf.PdfWriter(clone_from=path)
@@ -228,10 +232,9 @@ class PDFTask(Task):
             self.num_pages = writer.get_num_pages()
 
             writer.add_metadata({"/Producer": "pyPDFserver"})
-            writer.write(export_artifact.path)
+            writer.write(self.export_artifact.path)
         except pypdf.errors.PyPdfError as ex:
             raise TaskException(f"Failed to process '{self.file_name}': {str(ex)}")
-        self.store_artifact(export_artifact)
 
     def __str__(self) -> str:
         return f"Decode PDF '{self.file_name}'"
@@ -250,15 +253,16 @@ class OCRTask(Task):
         self.num_jobs = num_jobs
         self.tesseract_timeout = tesseract_timeout
 
+        self.export_artifact = FileArtifact(self, "export")
+        self.register_artifact(self.export_artifact)
+
     def run(self) -> None:
         path = self.input.path if isinstance(self.input, FileArtifact) else self.input
         if not path.exists():
             raise TaskException(f"Missing input file '{self.input}'")
-        
-        export_artifact = FileArtifact(self, "export")
 
         try:
-            exit_code = ocrmypdf.ocr(path, export_artifact.path, 
+            exit_code = ocrmypdf.ocr(path, self.export_artifact.path, 
                                         language=self.language,
                                         deskew=self.deskew,
                                         rotate_pages=self.rotate_pages,
@@ -271,8 +275,6 @@ class OCRTask(Task):
         if not exit_code == ocrmypdf.ExitCode.ok:
             raise TaskException(exit_code.name)
         logger.debug(f"Applied OCR for '{self.file_name}' (lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages})")
-        
-        self.store_artifact(export_artifact)
         
     def __repr__(self) -> str:
         return f"<OCR '{self.file_name}' (lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages})>"
@@ -290,6 +292,9 @@ class DuplexTask(Task):
         self.file2_name = file2_name
         self.export_name = export_name
 
+        self.export_artifact = FileArtifact(self, "export")
+        self.register_artifact(self.export_artifact)
+
     def run(self):
         path1 = self.input1.path if isinstance(self.input1, FileArtifact) else self.input1
         if not path1.exists():
@@ -298,8 +303,6 @@ class DuplexTask(Task):
         path2 = self.input2.path if isinstance(self.input2, FileArtifact) else self.input2
         if not path2.exists():
             raise TaskException(f"Missing input file '{self.input2}'")
-        
-        export_artifact = FileArtifact(self, "export")
 
         try:
             reader1 = pypdf.PdfReader(path1)
@@ -327,10 +330,9 @@ class DuplexTask(Task):
             # if reader2.metadata is not None:
             #     pdf_merged.add_metadata(reader2.metadata)
             pdf_merged.add_metadata({"/Producer": "pyPDFserver"})
-            pdf_merged.write(export_artifact.path)
+            pdf_merged.write(self.export_artifact.path)
         except pypdf.errors.PyPdfError as ex:
             raise TaskException(f"Failed to merge '{self.file1_name}' with '{self.file2_name}': {str(ex)}")
-        self.store_artifact(export_artifact)
 
 
 
@@ -340,7 +342,7 @@ task_waiting_list: list[Task] = []
 task_finished_list: list[Task] = []
 current_task: Task|None = None
 
-def loop() -> None:
+def _pdfworker_loop() -> None:
     """ Implements the main thread loop """
     global current_task
     while True:
@@ -453,6 +455,8 @@ def clean_up() -> None:
 
 def run() -> None:
     """ Start the server loop """
+    global process
+    process = Process(target=_pdfworker_loop)
     process.start()
 
 def abort() -> None:
@@ -467,5 +471,3 @@ def abort() -> None:
     if not process.is_alive():
         return
     threading.Thread(target=_terminate, name="Abort pdf server loop").run()
-
-process = Process(target=loop)

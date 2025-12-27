@@ -66,3 +66,10 @@ def debug() -> None:
 
 if "-debug" in sys.argv:
     debug()
+
+logger.debug(f"File logging to {log_dir}")
+
+class ConfigError(Exception):
+    def __init__(self, msg: str = "") -> None:
+        super().__init__()
+        self.msg = msg
