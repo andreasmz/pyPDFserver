@@ -22,7 +22,6 @@ def clean_full() -> None:
         logger.warning(f"The extracted temp dir at {temp_dir} does not exist")
         return
     for f in [p for p in temp_dir.glob(f"pyPDFserver*") if p.is_dir()]:
-        # TODO: Actually delete the file
         shutil.rmtree(f)
         logger.debug(f"Removed old temporary working folder '{f.name}'")
 
