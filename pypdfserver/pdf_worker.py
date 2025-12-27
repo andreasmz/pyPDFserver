@@ -33,10 +33,10 @@ class Artifact:
 
     temp_dir = Path(pyPDFserver_temp_dir.name)
 
-    def __init__(self, task: "Task", name: str) -> None:
+    def __init__(self, task: "Task|None", name: str) -> None:
         self.task = task
         self.name = name
-        logger.debug(f"Created artifact '{name}' for task '{str(task)}'")
+        logger.debug(f"Created artifact '{name}'" + (f" for task '{str(task)}'" if task is not None else ""))
 
     def cleanup(self) -> None:
         """ Clean up the resources of the artifact """
@@ -58,13 +58,20 @@ class FileArtifact(Artifact):
     
     """
 
-    def __init__(self, task: "Task", name: str) -> None:
+    def __init__(self, task: "Task|None", name: str) -> None:
         super().__init__(task, name)
-        self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir / "artifacts", prefix=f"task_{task.uuid}_{name}", delete_on_close=False, delete=True)
+
+        prefix = f"task_{name}"
+        if self.task is not None:
+            f"task_{self.task.uuid}_{name}"
+
+        self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir / "artifacts", prefix=prefix, delete_on_close=False, delete=True)
         self.path = Path(self._temp_file.name)
-        self._finalizer = weakref.finalize(self, FileArtifact._cleanup, self.path, self.name, str(self.task))
+
+        self._finalizer = weakref.finalize(self, FileArtifact._cleanup, self.path, self.name, str(self.task) if self.task is not None else None)
+
         try:
-            logger.debug(f"Created temporary file '{self.path.relative_to(Artifact.temp_dir)}' for artifact '{name}' of task '{str(task)}'")
+            logger.debug(f"Created temporary file '{self.path.relative_to(Artifact.temp_dir)}' for artifact '{name}'" + (f" of task '{str(task)}'" if self.task is not None else ""))
         except ValueError:
             logger.error(f"Temporary file '{self.path}' is not in the temporary directory ('{Artifact.temp_dir}')")
 
@@ -78,15 +85,15 @@ class FileArtifact(Artifact):
         return f"FileArtifact '{self.name}'"
     
     @staticmethod
-    def _cleanup(path: Path, name: str, task_name: str) -> None:
+    def _cleanup(path: Path, name: str, task_name: str|None) -> None:
         if not path.exists():
             return
         try:
             path.unlink(missing_ok=True)
         except Exception:
-            logger.warning(f"Failed to delete temporary artifact '{name}' of task '{task_name}'")
+            logger.warning(f"Failed to delete temporary artifact '{name}'" + (f" of task '{task_name}'" if task_name is not None else ""))
         else:
-            logger.debug(f"Removed temporary artifact '{name}' of task '{task_name}'")
+            logger.debug(f"Removed temporary artifact '{name}'" + (f" of task '{task_name}'" if task_name is not None else ""))
 
 class Task:
     """ A task can define any workload scheduled to run asynchronously in the run() method. To pass results to other tasks, use the store_artifacts() method """
@@ -196,32 +203,43 @@ class UploadToFTPTask(Task):
     def __str__(self) -> str:
         return f"Upload '{self.file_name}'"
 
-# class PDFTask(Task):
+class PDFTask(Task):
+    """ Process a given PDF file """
 
-#     def __init__(self, input: Path|FileArtifact, file_name: str) -> None:
-#         super().__init__()
-#         self.input = input
-#         self.file_name = file_name
-#         self.reader: pypdf.PdfReader|None = None
-#         self.num_pages: int|None = None
+    def __init__(self, input: Path|FileArtifact, file_name: str) -> None:
+        super().__init__()
+        self.input = input
+        self.file_name = file_name
+        self.num_pages: int|None = None
 
-#     def run(self) -> None:
-#         path = self.input.path if isinstance(self.input, FileArtifact) else self.input
-#         if not path.exists():
-#             raise TaskException(f"Missing input file '{self.input}'")
-#         try:
-#             self.reader = pypdf.PdfReader(path)
-#             self.num_pages = self.reader.get_num_pages()
-#         except pypdf.errors.PyPdfError as ex:
-#             raise TaskException(f"Failed to decode '{self.file_name}': {str(ex)}")
+    def run(self) -> None:
+        path = self.input.path if isinstance(self.input, FileArtifact) else self.input
+        if not path.exists():
+            raise TaskException(f"Missing input file '{self.input}'")
         
-#     def __str__(self) -> str:
-#         return f"Decode PDF '{self.file_name}'"
+        export_artifact = FileArtifact(self, "export")
+
+        try:
+            writer = pypdf.PdfWriter(clone_from=path)
+
+            if writer.is_encrypted:
+                raise TaskException(f"Input file '{self.file_name}' is encrypted")
+
+            self.num_pages = writer.get_num_pages()
+
+            writer.add_metadata({"/Producer": "pyPDFserver"})
+            writer.write(export_artifact.path)
+        except pypdf.errors.PyPdfError as ex:
+            raise TaskException(f"Failed to process '{self.file_name}': {str(ex)}")
+        self.store_artifact(export_artifact)
+
+    def __str__(self) -> str:
+        return f"Decode PDF '{self.file_name}'"
         
 
 class OCRTask(Task):
 
-    def __init__(self, input: Path|FileArtifact, file_name: str, language: str, optimize: int, deskew: bool, rotate_pages: bool, Tasks: int = 1, tesseract_timeout: int = 60) -> None:
+    def __init__(self, input: Path|FileArtifact, file_name: str, language: str, optimize: int, deskew: bool, rotate_pages: bool, num_jobs: int = 1, tesseract_timeout: int|None = 60) -> None:
         super().__init__()
         self.input = input
         self.file_name = file_name
@@ -229,7 +247,7 @@ class OCRTask(Task):
         self.deskew = deskew
         self.optimize = optimize
         self.rotate_pages = rotate_pages
-        self.Tasks = Tasks
+        self.num_jobs = num_jobs
         self.tesseract_timeout = tesseract_timeout
 
     def run(self) -> None:
@@ -244,7 +262,7 @@ class OCRTask(Task):
                                         language=self.language,
                                         deskew=self.deskew,
                                         rotate_pages=self.rotate_pages,
-                                        Tasks=self.Tasks,
+                                        jobs=self.num_jobs,
                                         optimize=self.optimize,
                                         tesseract_timeout=self.tesseract_timeout
                                         )
@@ -415,6 +433,10 @@ def loop() -> None:
         task_finished_list.append(current_task)
         logger.debug(f"Finished task '{str(current_task)}'")
 
+def add_tasks(*tasks: Task) -> None:
+    for t in tasks:
+        task_queue.put(t)
+        logger.debug(f"Added task '{str(t)}' to the queue")
 
 def clean_up() -> None:
     """ Clean up the task lists """
