@@ -6,13 +6,14 @@ import pypdf.errors
 import tempfile
 import threading
 import uuid
+import weakref
 from datetime import datetime, timedelta
 from enum import Enum
 from io import BytesIO
 from multiprocessing import Process
 from pathlib import Path
 from queue import Queue, Empty
-from typing import BinaryIO
+from typing import Any
 
 from .core import *
 
@@ -25,44 +26,97 @@ class TaskState(Enum):
     FAILED = 5
     DEPENDENCY_FAILED = 6
 
+class Artifact:
+
+    temp_dir = Path(pyPDFserver_temp_dir.name)
+
+    def __init__(self, task: "Task", name: str) -> None:
+        self.task = task
+        self.name = name
+        logger.debug(f"Created artifact '{name}' for task '{str(task)}'")
+
+    def cleanup(self) -> None:
+        """ Clean up the ressources of the artifact """
+        pass
+
+    def __del__(self) -> None:
+        self.cleanup()
+
+    def __str__(self) -> str:
+        return f"Artifact '{self.name}'"
+    
+    def __repr__(self) -> str:
+        return f"<{str(self)}>"
+
+class FileArtifact(Artifact):
+
+    def __init__(self, task: "Task", name: str) -> None:
+        super().__init__(task, name)
+        self.temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir / "artifacts", prefix=f"task_{task.uuid}_{name}", delete_on_close=False, delete=True)
+        self.path = Path(self.temp_file.name)
+        self._finalizer = weakref.finalize(self, FileArtifact._cleanup, self.path, self.name, str(self.task))
+        try:
+            logger.debug(f"Created temporary file '{self.path.relative_to(Artifact.temp_dir)}' for artifact '{name}' of task '{str(task)}'")
+        except ValueError:
+            logger.error(f"Temporary file '{self.path}' is not in the temporary directory ('{Artifact.temp_dir}')")
+
+    def cleanup(self) -> None:
+        if not self.temp_file.closed:
+            self.temp_file.close()
+        if self._finalizer.alive:
+            self._finalizer()
+
+    def __str__(self) -> str:
+        return f"FileArtifact '{self.name}'"
+    
+    @staticmethod
+    def _cleanup(path: Path, name: str, task_name: str) -> None:
+        if not path.exists():
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            logger.warning(f"Failed to delete temporary artifact '{name}' of task '{task_name}'")
+        else:
+            logger.debug(f"Removed temporary artifact '{name}' of task '{task_name}'")
+
 class Task:
     
     def __init__(self) -> None:
         self.state = TaskState.SCHEDULED
         self.uuid = str(uuid.uuid4())
         self.dependencies: list[Task] = []
-        self.childrens: list[Task] = []
         self.t_created: datetime = datetime.now()
         self.t_start: datetime|None = None
         self.t_end: datetime|None = None
-        self.dependencies_artificats: dict[str, BinaryIO] = {}
+        self.artifacts: dict[str, Artifact] = {}
 
-    def run(self, artificats: list[BinaryIO]) -> list[BinaryIO]:
+    def run(self):
         """ Called when a Task is executed """
         raise NotImplementedError(f"The given task does not implement a run() method")
-
-    def __repr__(self) -> str:
-        return f"<{str(self)}>"
     
-    def __str__(self) -> str:
-        return f"Generic Task {self.uuid}"
+    def clean_up(self) -> None:
+        self.artifacts = {}
+        # for a in self.artifacts.values():
+        #     a.cleanup()
+        #     del a
+
+    def store_artifact(self, artifact: Artifact) -> None:
+        self.artifacts[artifact.name] = artifact
     
     def runtime(self) -> timedelta|None:
         if self.t_start is None or self.t_end is None:
             return None
         return self.t_end - self.t_start
     
-    def send_artifacts_to(self, other_task: "Task") -> None:
-        other_task.dependencies.append(self)
-        self.childrens.append(other_task)
-
-    def put(self, **f_handles: BinaryIO) -> None:  
-        for name, f_handle in f_handles.items():
-            for c in self.childrens:
-                temp_file = tempfile.TemporaryFile(prefix="pyPDFserver_artifact")
-                temp_file.write(f_handle.read())
-                c.dependencies_artificats[name] = temp_file
-        
+    def __repr__(self) -> str:
+        return f"<{str(self)}>"
+    
+    def __str__(self) -> str:
+        return f"Generic Task {self.uuid}"
+    
+    def __del__(self) -> None:
+        self.clean_up()
 
     
 class TaskException(Exception):
@@ -72,20 +126,22 @@ class TaskException(Exception):
         super().__init__(*args)
         self.message = message
 
-class UploadTask(Task):
+class UploadToFTPTask(Task):
     """
     Upload an file to an external FTP server
     """
 
     def __init__(self, 
-                 file: Path, 
+                 input: Path|FileArtifact, 
+                 file_name: str,
                  address: tuple[str, int], 
                  username: str, password: str, 
                  folder: str, 
                  tls: bool,
                  source_address: tuple[str, int]|None = None) -> None:
         super().__init__()
-        self.file = file
+        self.input = input
+        self.file_name = file_name
         self.address = address
         self.username = username
         self.password = password
@@ -93,8 +149,6 @@ class UploadTask(Task):
         self.tls = tls
         self.source_address = source_address
 
-        with open(self.file, "rb") as f:
-            self.bytes = BytesIO(f.read())
 
     def run(self) -> None:
         if self.tls:
@@ -111,49 +165,54 @@ class UploadTask(Task):
             logger.debug(f"Connected to upload FTP server ('{ftp.getwelcome()}')")
             files = ftp.nlst()
 
-            if self.file.name in files:
+            if self.file_name in files:
                 raise TaskException(f"File already present on the server")
             
-            ftp.storbinary(f"STOR {self.file.name}", self.bytes)
-            logger.info(f"Uploaded file '{self.file.name}' to the server")
+            path = self.input.path if isinstance(self.input, FileArtifact) else self.input
+            if not path.exists():
+                raise TaskException(f"Missing input file '{self.input}'")
+            
+            with open(path, "rb") as f:
+                ftp.storbinary(f"STOR {self.file_name}", f)
+
+            logger.info(f"Uploaded file '{self.file_name}' to the server")
         except ftplib.all_errors as ex:
             raise TaskException(f"Failed to upload the file: {str(ex)}")
         finally:
-            self.bytes.close()
             ftp.close()    
 
     def __str__(self) -> str:
-        return f"Upload '{self.file.name}'"
+        return f"Upload '{self.file_name}'"
 
 class PDFTask(Task):
 
-    def __init__(self, file: Path) -> None:
+    def __init__(self, input: Path|FileArtifact, file_name: str) -> None:
         super().__init__()
-        self.file = file
+        self.input = input
+        self.file_name = file_name
         self.reader: pypdf.PdfReader|None = None
         self.num_pages: int|None = None
 
-        with open(self.file, "rb") as f:
-            self.bytes = BytesIO(f.read())
-
     def run(self) -> None:
+        path = self.input.path if isinstance(self.input, FileArtifact) else self.input
+        if not path.exists():
+            raise TaskException(f"Missing input file '{self.input}'")
         try:
-            self.reader = pypdf.PdfReader(self.bytes)
+            self.reader = pypdf.PdfReader(path)
             self.num_pages = self.reader.get_num_pages()
         except pypdf.errors.PyPdfError as ex:
-            logger.warning(f"Failed to decode '{self.file.name}': {str(ex)}")
-            raise TaskException(f"Failed to decode '{self.file.name}': {str(ex)}")
+            raise TaskException(f"Failed to decode '{self.file_name}': {str(ex)}")
         
     def __str__(self) -> str:
-        return f"Decode PDF '{self.file.name}'"
+        return f"Decode PDF '{self.file_name}'"
         
 
 class OCRTask(Task):
 
-    def __init__(self, file: Path, language: str, optimize: int, deskew: bool, rotate_pages: bool, Tasks: int = 1, tesseract_timeout: int = 60) -> None:
+    def __init__(self, input: Path|FileArtifact, file_name: str, language: str, optimize: int, deskew: bool, rotate_pages: bool, Tasks: int = 1, tesseract_timeout: int = 60) -> None:
         super().__init__()
-        self.input = file
-        self.output = file.parent / f"{file.stem}_OCR{file.suffix}"
+        self.input = input
+        self.file_name = file_name
         self.language = language
         self.deskew = deskew
         self.optimize = optimize
@@ -162,8 +221,12 @@ class OCRTask(Task):
         self.tesseract_timeout = tesseract_timeout
 
     def run(self) -> None:
+        path = self.input.path if isinstance(self.input, FileArtifact) else self.input
+        if not path.exists():
+            raise TaskException(f"Missing input file '{self.input}'")
+        export_artifact = FileArtifact(self, "export")
         try:
-            exit_code = ocrmypdf.ocr(self.input, self.output, 
+            exit_code = ocrmypdf.ocr(path, export_artifact.path, 
                                         language=self.language,
                                         deskew=self.deskew,
                                         rotate_pages=self.rotate_pages,
@@ -175,6 +238,7 @@ class OCRTask(Task):
             raise TaskException(ex.message)
         if not exit_code == ocrmypdf.ExitCode.ok:
             raise TaskException(exit_code.name)
+        self.store_artifact(export_artifact)
         
     def __repr__(self) -> str:
         return f"<OCR '{self.input.name}' (lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages})>"
@@ -192,13 +256,13 @@ task_finished: list[Task] = []
 task_queue: Queue[Task] = Queue()
 task_priority_queue: Queue[Task] = Queue()
 task_waiting_list: list[Task] = []
-task: Task|None = None
+current_task: Task|None = None
 
 def loop() -> None:
     """ Implements the main thread loop """
-    global task
+    global current_task
     while True:
-        task = None
+        current_task = None
 
         clean_up()
 
@@ -227,20 +291,20 @@ def loop() -> None:
 
         # Get next task
         try:
-            task = task_priority_queue.get_nowait()
+            current_task = task_priority_queue.get_nowait()
         except Empty:
-            task = task_queue.get(block=True)
+            current_task = task_queue.get(block=True)
 
-        if task.state != TaskState.SCHEDULED:
-            task_finished.append(task)
-            logger.debug(f"Unexpected TaskState {task.state} for task '{task}' in queue")
+        if current_task.state != TaskState.SCHEDULED:
+            task_finished.append(current_task)
+            logger.debug(f"Unexpected TaskState {current_task.state} for task '{current_task}' in queue")
             continue
 
-        task.state = TaskState.RUNNING
+        current_task.state = TaskState.RUNNING
 
         # Check if all dependencies for the task are resolved
         dependencies_resolved = True
-        for d in task.dependencies:
+        for d in current_task.dependencies:
             match d.state:
                 case TaskState.SCHEDULED | TaskState.WAITING | TaskState.RUNNING:
                     dependencies_resolved = False
@@ -248,33 +312,33 @@ def loop() -> None:
                     pass
                 case _:
                     dependencies_resolved = False
-                    task.state = TaskState.DEPENDENCY_FAILED
+                    current_task.state = TaskState.DEPENDENCY_FAILED
                     break
-        if task.state != TaskState.RUNNING:
-            task_finished.append(task)
-            logger.debug(f"Task '{str(task)}' was marked as DEPENDENCY_FAILED")
+        if current_task.state != TaskState.RUNNING:
+            task_finished.append(current_task)
+            logger.debug(f"Task '{str(current_task)}' was marked as DEPENDENCY_FAILED")
             continue
         elif not dependencies_resolved:
-            task.state = TaskState.WAITING
-            task_waiting_list.append(task)
-            logger.debug(f"Task '{str(task)}' was marked as WAITING")
+            current_task.state = TaskState.WAITING
+            task_waiting_list.append(current_task)
+            logger.debug(f"Task '{str(current_task)}' was marked as WAITING")
             continue
 
-        logger.debug(f"Executing task '{str(task)}'")
+        logger.debug(f"Executing task '{str(current_task)}'")
         
         try:
-            task.run()
+            current_task.run()
         except TaskException as ex:
-            task.state = TaskState.FAILED
-            logger.info(f"Task {str(task)}: {ex.message}")
+            current_task.state = TaskState.FAILED
+            logger.info(f"Task {str(current_task)}: {ex.message}")
         except Exception as ex:
-            task.state = TaskState.FAILED
-            logger.warning(f"Failed to process task '{str(task)}': ", exc_info=True)
+            current_task.state = TaskState.FAILED
+            logger.warning(f"Failed to process task '{str(current_task)}': ", exc_info=True)
         else:
-            task.state = TaskState.FINISHED
-            logger.debug(f"Finished task '{str(task)}'")
+            current_task.state = TaskState.FINISHED
+            logger.debug(f"Finished task '{str(current_task)}'")
 
-        task = None
+        current_task = None
 
 def clean_up() -> None:
     """ Clean up the task lists """
