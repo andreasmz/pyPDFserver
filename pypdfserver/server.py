@@ -86,7 +86,8 @@ class PDF_FTPHandler(FTPHandler):
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout
                                      ))
-            pdf_worker.add_tasks(*tasks[1:])
+            for t in tasks[1:]:
+                t.schedule()
 
             profile.duplex_pdf_cache = (tasks[-1], datetime.now(), file_name, r.groups("s")[0])
 
@@ -139,7 +140,8 @@ class PDF_FTPHandler(FTPHandler):
             ))
             for t1, t2 in zip(tasks[1:], tasks[2:]):
                 t2.dependencies.append(t1)
-            pdf_worker.add_tasks(*tasks[1:])
+            for t in tasks[1:]:
+                t.schedule()
             
         elif (r := profile.input_pdf_regex.match(file_name)):
             logger.info(f"Received file '{file_name}' by user '{self.username}'")
@@ -170,7 +172,8 @@ class PDF_FTPHandler(FTPHandler):
             ))
             for t1, t2 in zip(tasks[1:], tasks[2:]):
                 t2.dependencies.append(t1)
-            pdf_worker.add_tasks(*tasks[1:])
+            for t in tasks[1:]:
+                t.schedule()
         else:
             logger.info(f"Discarded file '{file_name}' not matching any regex")
 
