@@ -32,14 +32,14 @@ if config.getboolean("SETTINGS", "log_to_file", fallback=True):
 def log_exceptions_hook(exc_type: type[BaseException], exc_value: BaseException, exc_traceback: types.TracebackType | None = None) -> None:
     global logger
     logger.exception(f"{exc_type.__name__}:", exc_info=(exc_type, exc_value, exc_traceback))
-    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    #sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
 def thread_exceptions_hook(except_hook_args: threading.ExceptHookArgs):
     global logger
     exc_type, exc_value, exc_traceback, thread = except_hook_args.exc_type, except_hook_args.exc_value, except_hook_args.exc_traceback, except_hook_args.thread
     logger.exception(f"{exc_type.__name__} in thread '{thread.name if thread is not None else ''}':", 
                      exc_info=(exc_type, exc_value if exc_value is not None else BaseException(), exc_traceback))
-    sys.__excepthook__(exc_type, exc_value if exc_value is not None else BaseException(), exc_traceback)
+    #sys.__excepthook__(exc_type, exc_value if exc_value is not None else BaseException(), exc_traceback)
 
 sys.excepthook = log_exceptions_hook
 threading.excepthook = thread_exceptions_hook

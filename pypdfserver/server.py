@@ -1,4 +1,5 @@
 from .core import *
+from .log import _file_handler
 from .pdf_worker import Task, PDFTask, OCRTask, DuplexTask, UploadToFTPTask, Artifact, FileArtifact
 from . import pdf_worker
 
@@ -15,7 +16,9 @@ from pyftpdlib.servers import FTPServer
 from threading import Thread
 from typing import cast
 
-pyftpdlib.log.config_logging(level=pyftpdlib.log.logging.WARNING)
+pyftpdlib.log.config_logging(pyftpdlib.log.logging.WARNING)
+pyftpdlib.log.logger.addHandler(_file_handler)
+pyftpdlib.log
 
 class PDFAuthorizer(DummyAuthorizer):
     """ Extend the Dummy Authorizer class with hashed password storage """
@@ -33,14 +36,15 @@ class PDF_FTPHandler(FTPHandler):
         super().__init__(conn, server, ioloop)
 
     def on_connect(self) -> None:
-        temp_dir = pyPDFserver_temp_dir_path / "clients"
-        temp_dir.mkdir(exist_ok=True, parents=False)
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(temp_dir), prefix="ftp_client_")
-        self.temp_path = Path(self.temp_dir.name)
-        if self.fs is not None:
-            self.fs.chdir(self.temp_dir)
-        logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected (temporary directory {self.temp_path.name})")
         super().on_connect()    
+        self.temp_dir = tempfile.TemporaryDirectory(dir=str(PDF_FTPHandler.server.home_dir), prefix="ftp_client_", ignore_cleanup_errors=True)
+        self.temp_path = Path(self.temp_dir.name)
+        logger.debug(f"Client {self.remote_ip}:{self.remote_port} connected (temporary directory {self.temp_path.name})")
+        
+    def on_login(self, username) -> None:
+        super().on_login(username)
+        if self.fs is not None:
+            self.fs.root = (str(self.temp_path))
 
     def on_disconnect(self) -> None:
         super().on_disconnect()
@@ -167,6 +171,8 @@ class PDF_FTPHandler(FTPHandler):
             for t1, t2 in zip(tasks[1:], tasks[2:]):
                 t2.dependencies.append(t1)
             pdf_worker.add_tasks(*tasks[1:])
+        else:
+            logger.info(f"Discarded file '{file_name}' not matching any regex")
 
 class PDFProfile:
 
@@ -278,8 +284,8 @@ class PDF_FTPServer:
             raise ConfigError(f"Invalid field 'duplex_timeout' in profile 'SETTINGS'")
 
 
-        home_dir = pyPDFserver_temp_dir_path / "ftp_cache"
-        home_dir.mkdir(exist_ok=True, parents=False)
+        self.home_dir = pyPDFserver_temp_dir_path / "ftp_cache"
+        self.home_dir.mkdir(exist_ok=True, parents=False)
 
         authorizer = PDFAuthorizer()
 
@@ -288,11 +294,11 @@ class PDF_FTPServer:
 
         for section in profiles_config.sections() + ["DEFAULT"]:
             p = PDFProfile(section)
-            self.profiles[p.name] = p
+            self.profiles[p.username] = p
             authorizer.add_user(
                 p.username,
                 p.password,
-                homedir=home_dir,
+                homedir=self.home_dir,
                 perm="w",
                 msg_login="Connected to pyPDFserver"
             )
