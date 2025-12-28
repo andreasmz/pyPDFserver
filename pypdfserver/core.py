@@ -10,8 +10,9 @@ import atexit
 
 def legacy_cleanup() -> None:
     """ Clear previously created, not delete temporary folder """
-
     temp_dir = Path(tempfile.gettempdir())
+    logger.debug(f"Removing old temporary files from {temp_dir}")
+    
     if not temp_dir.exists():
         logger.warning(f"The extracted temp dir at {temp_dir} does not exist")
         return

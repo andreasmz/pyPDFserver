@@ -66,7 +66,7 @@ class FileArtifact(Artifact):
         if self.task is not None:
             f"task_{self.task.uuid}_{name}"
 
-        self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir, prefix=prefix, suffix=".bin", delete_on_close=False, delete=True)
+        self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir, prefix=prefix, suffix=".bin", delete=True)
         self.path = Path(self._temp_file.name)
 
         self._finalizer = weakref.finalize(self, FileArtifact._cleanup, self.path, self.name, str(self.task) if self.task is not None else None)
