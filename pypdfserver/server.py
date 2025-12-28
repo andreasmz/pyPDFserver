@@ -249,9 +249,9 @@ class PDFProfile:
             duplex2_template = duplex2_template.replace(k, v)
         self.duplex2_regex = re.compile(duplex2_template)
 
-        export_pdf_template = profiles_config.get(self.name, "export_pdf_template", fallback=None)
+        export_pdf_template = profiles_config.get(self.name, "export_pdf_name", fallback=None)
         if export_pdf_template is None:
-            raise ConfigError(f"Missing field 'export_pdf_template' in profile '{self.name}'")
+            raise ConfigError(f"Missing field 'export_pdf_name' in profile '{self.name}'")
         self.export_pdf_template = export_pdf_template
 
         export_duplex_template = profiles_config.get(self.name, "export_duplex_name", fallback=None)

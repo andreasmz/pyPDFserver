@@ -17,10 +17,10 @@ classifiers = [
 keywords = ["neurotorch", "neurons", "glutamate", "synapses", "python", "iGluSnFR"]
 
 dependencies = [
-  "pyftpdlib>=2.1",
-  "pypdf>=5.9",
-  "platformdirs>=4.2",
-  "ocrmypdf>=14.4",
+  "pyftpdlib~=2.1",
+  "pypdf~=6.5",
+  "platformdirs>=4.5",
+  "ocrmypdf>=16.3",
   "prompt-toolkit>=3.0.52"
 ]
 
