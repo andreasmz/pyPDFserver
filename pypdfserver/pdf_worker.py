@@ -9,7 +9,6 @@ import uuid
 import weakref
 from datetime import datetime, timedelta
 from enum import Enum
-from multiprocessing import Process
 from pathlib import Path
 from queue import Queue, Empty
 
@@ -455,19 +454,6 @@ def clean_up() -> None:
 
 def run() -> None:
     """ Start the server loop """
-    global process
-    process = Process(target=_pdfworker_loop)
-    process.start()
-
-def abort() -> None:
-    """ Abort the current task by terminating the current process loop and restarting it """
-    # Use thread to join the thread (as terminate does not wait)
-    def _terminate() -> None:
-        process.terminate()
-        process.join()
-        if current_task is not None:
-            current_task.state = TaskState.ABORTED
-        run()
-    if not process.is_alive():
-        return
-    threading.Thread(target=_terminate, name="Abort pdf server loop").run()
+    global worker_thread
+    worker_thread = threading.Thread(target=_pdfworker_loop, name="PDFworker loop", daemon=True)
+    worker_thread.start()

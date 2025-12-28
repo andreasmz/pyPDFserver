@@ -1,3 +1,4 @@
+from .pkg import RUN_AS_MAIN
 from . import log, settings
 from .log import logger, debug, ConfigError
 from .settings import config, profiles_config, save_config
@@ -26,15 +27,19 @@ def cleanup() -> None:
     else:
         logger.debug(f"Cleared the temporary working directory")
 
-
-legacy_cleanup()
+if RUN_AS_MAIN:
+    try:
+        config.get("SETTINGS", "clean_old_temporary_files", fallback=False)
+    except ValueError:
+        logger.debug(f"Invalid field 'clean_old_temporary_files' in section 'SETTINGS'")
+    legacy_cleanup()
 
 pyPDFserver_temp_dir = tempfile.TemporaryDirectory(prefix="pyPDFserver_")
 pyPDFserver_temp_dir_path = Path(pyPDFserver_temp_dir.name)
-logger.debug(f"Temporary working directory: {pyPDFserver_temp_dir_path}")
 
 atexit.register(cleanup)
 
-logger.debug(f"Config directory: {settings.config_path}")
-
-save_config()
+if RUN_AS_MAIN:
+    logger.debug(f"Config directory: {settings.config_path}")
+    logger.debug(f"Temporary working directory: {pyPDFserver_temp_dir_path}")
+    save_config()

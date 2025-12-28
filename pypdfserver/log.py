@@ -8,6 +8,7 @@ import types
 from logging.handlers import RotatingFileHandler
 
 from .settings import config
+from .pkg import RUN_AS_MAIN
 
 log_dir = platformdirs.user_log_path(appname="pyPDFserver", appauthor=False, ensure_exists=True)
 
@@ -26,6 +27,8 @@ if config.getboolean("SETTINGS", "log_to_file", fallback=True):
     _file_handler.setFormatter(_formatter)
     _file_handler.setLevel(logging.DEBUG)
     logger.addHandler(_file_handler)
+    if RUN_AS_MAIN:
+        logger.debug(f"File logging to {log_dir}")
 
 
 def log_exceptions_hook(exc_type: type[BaseException], exc_value: BaseException, exc_traceback: types.TracebackType | None = None) -> None:
@@ -66,8 +69,6 @@ def debug() -> None:
 
 if "-debug" in sys.argv:
     debug()
-
-logger.debug(f"File logging to {log_dir}")
 
 class ConfigError(Exception):
     def __init__(self, msg: str = "") -> None:
