@@ -140,6 +140,7 @@ class PDF_FTPHandler(FTPHandler):
                 password=PDF_FTPHandler.server.export_config.password,
                 folder=profile.export_path,
                 tls=True,
+                source_address=((PDF_FTPHandler.server.local_ip, PDF_FTPHandler.server.export_config.control_port) if PDF_FTPHandler.server.export_config.control_port is not None else None)
             ))
             for t1, t2 in zip(tasks[1:], tasks[2:]):
                 t2.dependencies.append(t1)
@@ -176,6 +177,7 @@ class PDF_FTPHandler(FTPHandler):
                 password=PDF_FTPHandler.server.export_config.password,
                 folder=profile.export_path,
                 tls=True,
+                source_address=((PDF_FTPHandler.server.local_ip, PDF_FTPHandler.server.export_config.control_port) if PDF_FTPHandler.server.export_config.control_port is not None else None)
             ))
             for t1, t2 in zip(tasks[1:], tasks[2:]):
                 t2.dependencies.append(t1)
@@ -314,31 +316,56 @@ class PDF_FTPServer:
             )
             logger.debug(f"Created FTP user {p.username} with password *****")
 
-        host = config.get("FTP", "host", fallback="")
-        if host == "":
-            logger.info(f"No host set. Defaulting to 127.0.0.1")
-            host = "127.0.0.1"
+        
+
+        self.local_ip = config.get("FTP", "local_ip", fallback="")
+        if self.local_ip == "":
+            logger.info(f"No local_ip set. Defaulting to 127.0.0.1")
+            self.local_ip = "127.0.0.1"
+
+        self.host = config.get("FTP", "host", fallback="")
+        if self.host == "":
+            logger.info(f"No host set. Defaulting to the local_ip value '{self.local_ip}'")
+            self.host = self.local_ip
 
         try:
-            port = config.getint("FTP", "port", fallback=-1)
+            self.port = config.getint("FTP", "port", fallback=-1)
         except ValueError:
-            port = -1
-        if port <= 0 or port >= 2**16:
+            self.port = -1
+        if self.port <= 0 or self.port >= 2**16:
             logger.info(f"No or invalid port set. Defaulting to 21")
-            port = 21
+            self.port = 21
+
+        passive_ports = config.get("FTP", "passive_ports", fallback="")
+        self.passive_ports: list[int]|None = None
+        if passive_ports.strip() != "":
+            self.passive_ports = []
+            try:
+                for x in passive_ports.split(","):
+                    if len(x.split("-")) == 2:
+                        a, b = x.split("-")
+                        a, b = int(a.strip()), int(b.strip())
+                        self.passive_ports.extend(range(a, b))
+                    else:
+                        self.passive_ports.append(int(x.strip()))
+            except ValueError:
+                raise ConfigError(f"Invalid list of ports in field 'passive_ports' of section 'FTP'")
 
         handler = PDF_FTPHandler
         handler.authorizer = authorizer
         handler.server = self
+        handler.passive_ports = self.passive_ports # type: ignore
+        if self.local_ip != self.host:
+            handler.masquerade_address = self.host # type: ignore
 
-        self.server = FTPServer((host, port), handler)
+        self.server = FTPServer((self.local_ip, self.port), handler)
 
         self.export_config = ExportFTP()
 
         self.thread = Thread(target=self._loop, name="PDF_FTPServer_main", daemon=True)
         self.thread.start()
 
-        logger.info(f"pyPDFserver started on {host}:{port} with {len(self.profiles)} profiles loaded")
+        logger.info(f"pyPDFserver started on {self.host}:{self.port} (listening on {self.local_ip}) with {len(self.profiles)} profiles loaded")
 
     def _loop(self) -> None:
         self.server.serve_forever(handle_exit=True)
@@ -364,6 +391,13 @@ class ExportFTP:
         if self.port <= 0 or self.port >= 2**16:
             logger.info(f"No or invalid port for export FTP server set. Defaulting to 21")
             self.port = 21
+
+        try:
+            self.control_port = config.getint("EXPORT_FTP_SERVER", "control_port", fallback=-1)
+        except ValueError:
+            self.control_port = -1
+        if self.control_port <= 0 or self.control_port >= 2**16:
+            self.control_port = None
 
         username = config.get("EXPORT_FTP_SERVER", "username", fallback=None)
         if username is None:
