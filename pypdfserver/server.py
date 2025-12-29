@@ -89,7 +89,7 @@ class PDF_FTPHandler(FTPHandler):
             for t in tasks[1:]:
                 t.schedule()
 
-            profile.duplex_pdf_cache = (tasks[-1], datetime.now(), file_name, r.groups("s")[0])
+            profile.duplex_pdf_cache = (tasks[-1], datetime.now(), file_name, r.group("s"))
 
         elif (r := profile.duplex2_regex.match(file_name)):
             
@@ -103,10 +103,13 @@ class PDF_FTPHandler(FTPHandler):
             
             logger.info(f"Received duplex back pages '{file_name}' by user '{self.username}'")
 
-            export_name = profile.export_duplex_template.replace("(lang)", r.groups("lang")[0])
+
+            export_name = profile.export_duplex_template
+            export_name = export_name.replace("(lang)", profile.ocr_language)
             export_name = export_name.replace("(*)", profile.duplex_pdf_cache[3])
             export_name = export_name.replace("(*1)", profile.duplex_pdf_cache[3])
-            export_name = export_name.replace("(*2)", r.groups("s")[0])
+            if "s" in r.groups():
+                export_name = export_name.replace("(*2)", r.group("s"))
             
             tasks: list[Task] = [Task()]
             tasks[0].artifacts["export"] = artifact
@@ -142,12 +145,16 @@ class PDF_FTPHandler(FTPHandler):
                 t2.dependencies.append(t1)
             for t in tasks[1:]:
                 t.schedule()
+
+            profile.duplex_pdf_cache = None
             
         elif (r := profile.input_pdf_regex.match(file_name)):
             logger.info(f"Received file '{file_name}' by user '{self.username}'")
 
-            export_name = profile.export_pdf_template.replace("(lang)", r.groups("lang")[0])
-            export_name = export_name.replace("(*)", r.groups("s")[0])
+            export_name = profile.export_pdf_template
+            export_name = export_name.replace("(lang)", profile.ocr_language)
+            if "s" in r.groups():
+                export_name = export_name.replace("(*2)", r.group("s"))
 
             tasks: list[Task] = [Task()]
             tasks[0].artifacts["export"] = artifact
@@ -330,8 +337,6 @@ class PDF_FTPServer:
 
         self.thread = Thread(target=self._loop, name="PDF_FTPServer_main", daemon=True)
         self.thread.start()
-
-        pdf_worker.run()
 
         logger.info(f"pyPDFserver started on {host}:{port} with {len(self.profiles)} profiles loaded")
 

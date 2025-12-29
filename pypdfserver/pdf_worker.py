@@ -1,4 +1,5 @@
 import ftplib
+import logging
 import ocrmypdf
 import ocrmypdf.exceptions
 import pypdf
@@ -13,6 +14,11 @@ from pathlib import Path
 from queue import Queue, Empty
 
 from .core import *
+from .log import _file_handler, _stream_handler
+
+ocrmypdf_logger = logging.getLogger("ocrmypdf")
+ocrmypdf_logger.addHandler(_stream_handler)
+ocrmypdf_logger.addHandler(_file_handler)
 
 class TaskState(Enum):
     """ 
@@ -71,7 +77,7 @@ class FileArtifact(Artifact):
         if self.task is not None:
             f"task_{self.task.uuid}_{name}"
 
-        self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir, prefix=prefix, suffix=".bin", delete=True)
+        self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir, prefix=prefix, suffix=".bin", delete=False)
         self._temp_file.close()
         self.path = Path(self._temp_file.name)
 
@@ -186,6 +192,8 @@ class UploadToFTPTask(Task):
         self.tls = tls
         self.source_address = source_address
 
+        logger.debug(f"Created UploadToFTPTask '{str(self)}'")
+
     def run(self) -> None:
         if self.tls:
             ftp = ftplib.FTP_TLS()
@@ -232,6 +240,8 @@ class PDFTask(Task):
         self.export_artifact = FileArtifact(self, "export")
         self.register_artifact(self.export_artifact)
 
+        logger.debug(f"Created PDFTask '{str(self)}'")
+
     def run(self) -> None:
         path = self.input.path if isinstance(self.input, FileArtifact) else self.input
         if not path.exists():
@@ -270,6 +280,8 @@ class OCRTask(Task):
         self.export_artifact = FileArtifact(self, "export")
         self.register_artifact(self.export_artifact)
 
+        logger.debug(f"Created OCRTask '{str(self)}'")
+
     def run(self) -> None:
         path = self.input.path if isinstance(self.input, FileArtifact) else self.input
         if not path.exists():
@@ -282,10 +294,12 @@ class OCRTask(Task):
                                         rotate_pages=self.rotate_pages,
                                         jobs=self.num_jobs,
                                         optimize=self.optimize,
-                                        tesseract_timeout=self.tesseract_timeout
+                                        tesseract_timeout=self.tesseract_timeout,
+                                        skip_text=True,
+                                        progress_bar=False,
                                         )
         except ocrmypdf.exceptions.ExitCodeException as ex:
-            raise TaskException(ex.message)
+            raise TaskException(str(ex))
         if not exit_code == ocrmypdf.ExitCode.ok:
             raise TaskException(exit_code.name)
         logger.debug(f"Applied OCR for '{self.file_name}' (lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages})")
@@ -294,7 +308,7 @@ class OCRTask(Task):
         return f"<OCR '{self.file_name}' (lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages})>"
 
     def __str__(self) -> str:
-        return f"OCR '{self.file_name}'>"
+        return f"OCR '{self.file_name}'"
         
 class DuplexTask(Task):
 
@@ -308,6 +322,8 @@ class DuplexTask(Task):
 
         self.export_artifact = FileArtifact(self, "export")
         self.register_artifact(self.export_artifact)
+
+        logger.debug(f"Created DuplexTask '{str(self)}'")
 
     def run(self):
         path1 = self.input1.path if isinstance(self.input1, FileArtifact) else self.input1
@@ -343,14 +359,26 @@ class DuplexTask(Task):
             pdf_merged.write(self.export_artifact.path)
         except pypdf.errors.PyPdfError as ex:
             raise TaskException(f"Failed to merge '{self.file1_name}' with '{self.file2_name}': {str(ex)}")
+        
+    def __str__(self) -> str:
+        return f"Create duplex pdf '{self.export_name}'"
 
 task_queue: Queue[Task] = Queue()
 task_priority_queue: Queue[Task] = Queue()
 current_task: Task|None = None
 
+def _pdfworker_handler() -> None:
+    try:
+        _pdfworker_loop()
+    except Exception as ex:
+        logger.warning(f"The pdf worker loop crashed", exc_info=True)
+        logger.critical(f"Terminating pyPDFserver")
+        exit()
+
 def _pdfworker_loop() -> None:
     """ Implements the main thread loop """
     global current_task
+    logger.debug(f"Started the pdf worker loop")
     while True:
         current_task = None
 
@@ -456,5 +484,7 @@ def run() -> None:
     if current_task is not None and current_task.state.value < 10:
         current_task.state = TaskState.ABORTED
 
-    worker_thread = threading.Thread(target=_pdfworker_loop, name="PDFworker loop", daemon=True)
+    worker_thread = threading.Thread(target=_pdfworker_handler, name="PDFworker loop", daemon=True)
     worker_thread.start()
+
+run()
