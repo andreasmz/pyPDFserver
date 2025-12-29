@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [tool.hatch.version]
-path = "src/__init__.py"
+path = "pypdfserver/__init__.py"
 
 [project.urls]
 Repository = "https://github.com/andreasmz/pypdfserver"
