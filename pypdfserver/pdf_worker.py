@@ -73,9 +73,9 @@ class FileArtifact(Artifact):
     def __init__(self, task: "Task|None", name: str) -> None:
         super().__init__(task, name)
 
-        prefix = f"task_{name}"
+        prefix = f"artifact_{name}"
         if self.task is not None:
-            f"task_{self.task.uuid}_{name}"
+            prefix = f"{type(task).__name__}_{name}"
 
         self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir, prefix=prefix, suffix=".bin", delete=False)
         self._temp_file.close()

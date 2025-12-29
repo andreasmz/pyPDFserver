@@ -126,7 +126,6 @@ class PDF_FTPHandler(FTPHandler):
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout
                                      ))
-            tasks.append(PDFTask(cast(FileArtifact, tasks[-1].artifacts["export"]), file_name))
             tasks.append(DuplexTask(
                 cast(FileArtifact, profile.duplex_pdf_cache[0].artifacts["export"]),
                 cast(FileArtifact, tasks[-1].artifacts["export"]),
@@ -187,7 +186,7 @@ class PDF_FTPHandler(FTPHandler):
             for t in tasks[1:]:
                 t.schedule()
         else:
-            logger.info(f"Discarded file '{file_name}' not matching any regex")
+            logger.info(f"Discarded file '{file_name}' not matching any rules")
 
 class PDFProfile:
 

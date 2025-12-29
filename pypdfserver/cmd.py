@@ -10,12 +10,10 @@ from prompt_toolkit.completion import WordCompleter
 from typing import Callable
 
 class PromptShell:
-    prompt = "> "
-
     def __init__(self):
         from . import __version__, pdf_server
         self.commands = self._collect_commands()
-        self.session = PromptSession(
+        self.session = PromptSession("> ",
             completer=WordCompleter(list(self.commands.keys()), ignore_case=True)
         )
 
@@ -44,7 +42,7 @@ class PromptShell:
 
                 if cmd in self.commands:
                     try:
-                        self.commands[cmd](args)
+                        self.commands[cmd](*args)
                     except Exception as ex:
                         logger.error(f"Error processing command {cmd}: ", exc_info=True)
                 else:
@@ -60,10 +58,10 @@ class PromptShell:
 
 class CmdLib(PromptShell):
 
-    def cmd_exit(self, *args: str):
+    def cmd_exit(self, *args: str) -> None:
         raise KeyboardInterrupt()
 
-    def cmd_version(self, *args: str):
+    def cmd_version(self, *args: str) -> None:
         from . import __version__
         logger.info(f"pyPDFserver version {__version__}")
 
@@ -71,7 +69,7 @@ class CmdLib(PromptShell):
         cmd = args[0].lower() if len(args) > 0 else ""
         match cmd:
             case "list":
-                s = []
+                s = ["Currently running tasks"]
                 for t in pdf_worker.Task.task_list:
                     s.append(f"{t.state.name:>18}   {str(t):<40}")
                 logger.info('\n'.join(s))
@@ -83,6 +81,34 @@ class CmdLib(PromptShell):
                         t.clean_up()    
             case _:
                 logger.info(f"Syntax: tasks list|force_clear")
+        
+    def cmd_artifacts(self, *args: str) -> None:
+        from . import pdf_server
+        
+        cmd = args[0].lower() if len(args) > 0 else ""
+        match cmd:
+            case "list":
+                s = ["Currently stored artifacts"]
+                for p in [p for p in pdf_worker.Artifact.temp_dir.iterdir() if p.is_file()]:
+                    s.append(p.name)
+                logger.info('\n'.join(s)) 
+            case "clean":
+                artifacts: list[Path] = []
+                for t in pdf_worker.Task.task_list:
+                    for a in t.artifacts.values():
+                        if isinstance(a, pdf_worker.FileArtifact):
+                            artifacts.append(a.path)
+                artifacts_files: list[Path] = [p for p in pdf_worker.Artifact.temp_dir.iterdir() if p.is_file()]
+                garbage_artifacts = set(artifacts_files).difference(artifacts)
+                i = 0
+                for p in garbage_artifacts:
+                    i += 1
+                    logger.debug(f"Removed orphan artifact '{p.name}'")
+                    p.unlink()
+
+                logger.info(f"Removed {i} orphan artifacts")
+            case _:
+                logger.info(f"Syntax: artifacts list|clean")
         
 
 def start_pyPDFserver():
@@ -97,3 +123,4 @@ def start_pyPDFserver():
         except Exception as ex:
             logger.error(f"Failed to stop the FTP server: ", exc_info=True)
     cmd_lib = CmdLib()
+    cmd_lib.run()
