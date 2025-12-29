@@ -38,6 +38,6 @@ pyPDFserver_temp_dir_path = Path(pyPDFserver_temp_dir.name)
 
 atexit.register(cleanup)
 
-logger.debug(f"Config directory: {settings.config_path}")
+logger.info(f"Config directory: {settings.config_path}")
 logger.debug(f"Temporary working directory: {pyPDFserver_temp_dir_path}")
 save_config()

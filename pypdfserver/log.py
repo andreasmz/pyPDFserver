@@ -54,7 +54,7 @@ if config.getboolean("SETTINGS", "log_to_file", fallback=True):
     _file_handler.setFormatter(_formatter)
     _file_handler.setLevel(logging.DEBUG)
     logger.addHandler(_file_handler)
-    logger.debug(f"File logging to {log_dir}")
+    logger.info(f"Logging directory: {log_dir}")
 
 
 def log_exceptions_hook(exc_type: type[BaseException], exc_value: BaseException, exc_traceback: types.TracebackType | None = None) -> None:
