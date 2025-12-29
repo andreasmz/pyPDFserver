@@ -57,6 +57,9 @@ class PDF_FTPHandler(FTPHandler):
         path = Path(file)
         file_name = path.name
 
+        if not profile.input_case_sensitive:
+            file_name = file_name.lower()
+
         logger.debug(f"Received file '{file_name}' on profile '{profile.name}'")
 
         artifact = FileArtifact(None, file_name)
@@ -246,26 +249,37 @@ class PDFProfile:
         if self.ocr_tesseract_timeout <= 0:
             self.ocr_tesseract_timeout = None
 
+        try:
+            self.input_case_sensitive = profiles_config.getboolean(self.name, "input_case_sensitive")
+        except ValueError:
+            raise ConfigError(f"Missing field 'input_case_sensitive' in profile '{self.name}'")
+
         input_pdf_name = profiles_config.get(self.name, "input_pdf_name", fallback=None)
         if input_pdf_name is None:
             raise ConfigError(f"Missing field 'input_pdf_name' in profile '{self.name}'")
+        if not self.input_case_sensitive:
+            input_pdf_name = input_pdf_name.lower()
         for k, v in PDFProfile.TEMPLATE_STRINGS.items():
             input_pdf_name = input_pdf_name.replace(k, v)
         self.input_pdf_regex = re.compile(input_pdf_name)
 
-        duplex1_template = profiles_config.get(self.name, "input_duplex1_name", fallback=None)
-        if duplex1_template is None:
+        input_duplex1_name = profiles_config.get(self.name, "input_duplex1_name", fallback=None)
+        if input_duplex1_name is None:
             raise ConfigError(f"Missing field 'input_duplex1_name' in profile '{self.name}'")
         for k, v in PDFProfile.TEMPLATE_STRINGS.items():
-            duplex1_template = duplex1_template.replace(k, v)
-        self.duplex1_regex = re.compile(duplex1_template)
+            input_duplex1_name = input_duplex1_name.replace(k, v)
+        if not self.input_case_sensitive:
+            input_duplex1_name = input_duplex1_name.lower()
+        self.duplex1_regex = re.compile(input_duplex1_name)
 
-        duplex2_template = profiles_config.get(self.name, "input_duplex2_name", fallback=None)
-        if duplex2_template is None:
+        input_duplex2_name = profiles_config.get(self.name, "input_duplex2_name", fallback=None)
+        if input_duplex2_name is None:
             raise ConfigError(f"Missing field 'input_duplex2_name' in profile '{self.name}'")
         for k, v in PDFProfile.TEMPLATE_STRINGS.items():
-            duplex2_template = duplex2_template.replace(k, v)
-        self.duplex2_regex = re.compile(duplex2_template)
+            input_duplex2_name = input_duplex2_name.replace(k, v)
+        if not self.input_case_sensitive:
+            input_duplex2_name = input_duplex2_name.lower()
+        self.duplex2_regex = re.compile(input_duplex2_name)
 
         export_pdf_template = profiles_config.get(self.name, "export_pdf_name", fallback=None)
         if export_pdf_template is None:

@@ -49,23 +49,14 @@ class PromptShell:
                         logger.error(f"Error processing command {cmd}: ", exc_info=True)
                 else:
                     logger.error(f"Unkown command {cmd}")
-                    
+
         except (KeyboardInterrupt, SystemExit):
             logger.info(f"Stopping pyPDFserver")
             try:
                 if pdf_server is not None: pdf_server.stop()
             except Exception as ex:
                 logger.error(f"Failed to stop the FTP server: ", exc_info=True)
-        except ConfigError as ex:
-            logger.error(f"Configuration error: {ex.msg}. Terminating pyPDFserver")
-            try:
-                if pdf_server is not None: pdf_server.stop()
-            except Exception as ex:
-                logger.error(f"Failed to stop the FTP server: ", exc_info=True)
         exit()
-
-
-        
 
 class CmdLib(PromptShell):
 
@@ -97,4 +88,12 @@ class CmdLib(PromptShell):
 def start_pyPDFserver():
     from . import pdf_server
 
-    pdf_server = PDF_FTPServer()
+    try:
+        pdf_server = PDF_FTPServer()
+    except ConfigError as ex:
+        logger.error(f"Configuration error: {ex.msg}. Terminating pyPDFserver")
+        try:
+            if pdf_server is not None: pdf_server.stop()
+        except Exception as ex:
+            logger.error(f"Failed to stop the FTP server: ", exc_info=True)
+    cmd_lib = CmdLib()

@@ -34,7 +34,7 @@ class StdOutLogger(logging.Handler):
         color = self.COLORS.get(record.levelno, "")
         msg = self.format(record)
         if self.use_colors:
-            msg = f"{color}{msg}{self.__class__.COLORS}"
+            msg = f"{color}{msg}{self.__class__.RESET_COLOR}"
         prompt_toolkit.print_formatted_text(prompt_toolkit.formatted_text.ANSI(msg))
 
 log_dir = platformdirs.user_log_path(appname="pyPDFserver", appauthor=False, ensure_exists=True)
