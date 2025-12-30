@@ -16,7 +16,7 @@ RUN apt-get update && \
 
 COPY dist /tmp/dist
 
-RUN echo "Dateien im current working folder:" && ls -l
+RUN echo "Dateien im current working folder:" && ls -l .
 
 RUN pip install --no-cache-dir /tmp/dist/*.whl
 
