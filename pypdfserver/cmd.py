@@ -2,19 +2,21 @@
 
 from .core import *
 from .server import PDF_FTPServer
-from . import pdf_worker
+from . import pdf_worker, html
 import inspect
 import shlex
 from prompt_toolkit import PromptSession
+from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.completion import WordCompleter
 from typing import Callable
 
 class PromptShell:
-    def __init__(self):
+    def __init__(self, interactive: bool):
         from . import __version__, pdf_server
         self.commands = self._collect_commands()
         self.session = PromptSession("> ",
-            completer=WordCompleter(list(self.commands.keys()), ignore_case=True)
+            completer=WordCompleter(list(self.commands.keys()), ignore_case=True),
+            erase_when_done=interactive
         )
 
     def _collect_commands(self) -> dict[str, Callable]:
@@ -114,12 +116,13 @@ class CmdLib(PromptShell):
 def start_pyPDFserver():
     from . import pdf_server
 
-    use_prompt_session = False
+    interactive_shell = False
     try:
+        html.launch()
         try:
-            use_prompt_session = config.getboolean("SETTINGS", "use_prompt_session")
+            interactive_shell = config.getboolean("SETTINGS", "interactive_shell")
         except ValueError:
-            raise ConfigError(f"Missing or invalid field 'use_prompt_session' in section 'SETTINGS'")
+            raise ConfigError(f"Missing or invalid field 'interactive_shell' in section 'SETTINGS'")
         pdf_server = PDF_FTPServer()
     except ConfigError as ex:
         logger.error(f"Configuration error: {ex.msg}. Terminating pyPDFserver")
@@ -128,6 +131,5 @@ def start_pyPDFserver():
         except Exception as ex:
             logger.error(f"Failed to stop the FTP server: ", exc_info=True)
 
-    if use_prompt_session:
-        cmd_lib = CmdLib()
-        cmd_lib.run()
+    cmd_lib = CmdLib(interactive_shell)
+    cmd_lib.run()

@@ -25,15 +25,26 @@ class TaskState(Enum):
     Defines the status of a task. 
     Values 0-9 indicate a state before finishing, 10-19 indicate sucessfull finish and >20 indicate errors
     """
-    CREATED = 0
-    SCHEDULED = 1
-    WAITING = 2
-    RUNNING = 3
-    FINISHED = 10
-    FAILED = 20
-    ABORTED = 21
-    DEPENDENCY_FAILED = 22
-    UNKOWN_ERROR = 30
+    CREATED = (0, 80)
+    SCHEDULED = (1, 83)
+    WAITING = (2, 82)
+    RUNNING = (3, 84)
+    FINISHED = (10, 81)
+    FAILED = (20, 92)
+    ABORTED = (21, 91)
+    DEPENDENCY_FAILED = (22, 90)
+    UNKOWN_ERROR = (0, 93)
+
+    def __init__(self, value: int, priority: int):
+        self._value_ = value      # behält den ursprünglichen Enum-Wert
+        self.priority = priority # zusätzliches Attribut
+
+    @classmethod
+    def merge_states(cls, *states: "TaskState") -> "TaskState":
+        if len(states) == 0:
+            raise ValueError(f"Can't merge zeros TaskStates")
+        return max(states, key=lambda s: s.priority)
+
 
 class Artifact:
     """ 

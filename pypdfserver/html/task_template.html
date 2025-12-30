@@ -1,12 +1,5 @@
-        <tr class="job-row status-running" data-bs-toggle="collapse" data-bs-target="#{{UUID}}">
-          <td><i class="bi bi-chevron-down"></i></td>
-          <td>{{ UUID }}</td>
-          <td>{{ name }}</td>
-          <td><i class="bi {{ state-icon}}"></i> {{ state-name}}</td>
-        </tr>
-        <tr class="collapse" id="{{UUID}}">
-          <td colspan="4">
-            <table class="table subjob-table mb-0">
-            </table>
-          </td>
-        </tr>
+              <tr>
+                <td>{{ uuid }}</td>
+                <td>{{ name }}</td>
+                <td><i class="bi {{ state-icon }}"></i> {{ state }}</td>
+              </tr>
