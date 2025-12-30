@@ -14,7 +14,9 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir pypdfserver
+COPY dist /tmp/dist
+
+RUN pip install --no-cache-dir /tmp/dist/*.whl
 
 VOLUME ["/tmp", "/etc/pyPDFserver/", "~/.local/state/pyPDFserver/"]
 
