@@ -16,6 +16,9 @@ RUN apt-get update && \
 
 COPY dist /tmp/dist
 
+RUN echo "Inhalt von dist:" && ls -l dist
+RUN echo "Inhalt von /tmp/dist:" && ls -l /tmp/dist
+
 RUN pip install --no-cache-dir /tmp/dist/*.whl
 
 VOLUME ["/tmp", "/etc/pyPDFserver/", "~/.local/state/pyPDFserver/"]
