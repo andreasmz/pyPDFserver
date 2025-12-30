@@ -14,6 +14,11 @@ RUN apt-get update && \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+COPY dist /tmp/dist/
+COPY dist2 /tmp/dist/
+
+RUN echo "Dateien im current temp folder folder:" && ls /tmp/dist/ -l -a
+
 RUN pip install --no-cache-dir /tmp/dist/*.whl
 
 VOLUME ["/tmp", "/etc/pyPDFserver/", "~/.local/state/pyPDFserver/"]

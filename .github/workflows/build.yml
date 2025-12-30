@@ -136,11 +136,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: Upload wheel artifacts
-          path: ${{ runner.temp }}/dist
+          path: docker/dist
+
+      - name: Debug artifact folder
+        run: |
+          ls -l docker/dist
+          ls -l docker
 
       - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
