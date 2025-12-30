@@ -12,9 +12,8 @@ requires-python = ">=3.10"
 
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Development Status :: 3 - Alpha"
+    "Development Status :: 5 - Production/Stable"
 ]
-keywords = ["neurotorch", "neurons", "glutamate", "synapses", "python", "iGluSnFR"]
 
 dependencies = [
   "pyftpdlib~=2.1",
