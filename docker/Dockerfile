@@ -23,7 +23,7 @@ COPY dist/python-package-distributions /tmp/dist
 
 RUN pip install --no-cache-dir /tmp/dist/*.whl
 
-VOLUME ["/tmp", "/etc/pyPDFserver/", "~/.local/state/pyPDFserver/"]
+VOLUME ["/tmp", "/etc/pyPDFserver/", "/etc/xdg/pyPDFserver/", "/root/.local/state/pyPDFserver/"]
 
 EXPOSE 21
 EXPOSE 23000-23010
