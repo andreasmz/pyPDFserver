@@ -113,8 +113,9 @@ class Task:
     """ A task can define any workload scheduled to run asynchronously in the run() method. To pass results to other tasks, use the store_artifacts() method """
     
     task_list: list["Task"] = []
+    groups: dict[str, str] = {}
 
-    def __init__(self) -> None:
+    def __init__(self, group: str|None = None, group_name: str|None = None, hidden: bool = False) -> None:
         self.state = TaskState.CREATED
         self.uuid = str(uuid.uuid4())
         self.dependencies: list[Task] = []
@@ -123,8 +124,14 @@ class Task:
         self.t_end: datetime|None = None
         self.artifacts: dict[str, Artifact] = {}
         self.error: TaskException|None = None
+        self.group = group
+        self.hidden = hidden
 
         Task.task_list.append(self)
+
+    def set_group_name(self, name: str) -> None:
+        if self.group is not None:
+            Task.groups[self.group] = name
 
     def run(self):
         """ Called when a Task is executed """
@@ -181,8 +188,10 @@ class UploadToFTPTask(Task):
                  username: str, password: str, 
                  folder: str, 
                  tls: bool,
-                 source_address: tuple[str, int]|None = None) -> None:
-        super().__init__()
+                 source_address: tuple[str, int]|None = None,
+                 group: str|None = None, 
+                 hidden: bool = False) -> None:
+        super().__init__(group=group, hidden=hidden)
         self.input = input
         self.file_name = file_name
         self.address = address
@@ -231,8 +240,8 @@ class UploadToFTPTask(Task):
 class PDFTask(Task):
     """ Process a given PDF file """
 
-    def __init__(self, input: Path|FileArtifact, file_name: str) -> None:
-        super().__init__()
+    def __init__(self, input: Path|FileArtifact, file_name: str, group: str|None = None, hidden: bool = False) -> None:
+        super().__init__(group=group, hidden=hidden)
         self.input = input
         self.file_name = file_name
         self.num_pages: int|None = None
@@ -266,8 +275,17 @@ class PDFTask(Task):
 
 class OCRTask(Task):
 
-    def __init__(self, input: Path|FileArtifact, file_name: str, language: str, optimize: int, deskew: bool, rotate_pages: bool, num_jobs: int = 1, tesseract_timeout: int|None = 60) -> None:
-        super().__init__()
+    def __init__(self, input: Path|FileArtifact, 
+                 file_name: str, 
+                 language: str, 
+                 optimize: int, 
+                 deskew: bool, 
+                 rotate_pages: bool, 
+                 num_jobs: int = 1, 
+                 tesseract_timeout: int|None = 60,
+                 group: str|None = None, 
+                 hidden: bool = False) -> None:
+        super().__init__(group=group, hidden=hidden)
         self.input = input
         self.file_name = file_name
         self.language = language
@@ -312,8 +330,15 @@ class OCRTask(Task):
         
 class DuplexTask(Task):
 
-    def __init__(self, input1: Path|FileArtifact, input2: Path|FileArtifact, file1_name: str, file2_name: str, export_name: str) -> None:
-        super().__init__()
+    def __init__(self, 
+                 input1: Path|FileArtifact, 
+                 input2: Path|FileArtifact, 
+                 file1_name: str, 
+                 file2_name: str, 
+                 export_name: str,
+                 group: str|None = None, 
+                 hidden: bool = False) -> None:
+        super().__init__(group=group, hidden=hidden)
         self.input1 = input1
         self.input2 = input2
         self.file1_name = file1_name

@@ -2,7 +2,7 @@
 pyPDFserver - A locally hosted scan destination to apply OCR and duplex to scans
 """
 __author__ = "Andreas Brilka"
-__version__ = "1.0.4"
+__version__ = "1.1.0"
 
 from .core import *
 from .server import PDF_FTPServer
