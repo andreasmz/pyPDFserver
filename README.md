@@ -59,6 +59,8 @@ Some internal commands you don't usually need to use:
 [SETTINGS]
 # Set here the desired log level (CRITICAL, ERROR, WARNING, INFO, DEBUG)
 log_level = INFO
+# If set to False, disable interactive console input
+use_prompt_session = False
 # If set to true, use colors for the console output
 log_colors = True
 # If set to true, create log files
@@ -71,12 +73,12 @@ clean_old_temporary_files = True
 
 [FTP]
 host = 
-local_ip = 
-port = 
+local_ip = 127.0.0.1
+port = 21
 # Define passive ports as a comma seperated list, e.g. 6000,6001,6010-6020,6030
 # If running behind a NAT (e.g. in a Docker container), you should define some ports here
 # and allow them in the network setings of your firewall
-passive_ports = 
+passive_ports = 23001-23010
 
 [EXPORT_FTP_SERVER]
 # Set here the address and credentials for the external FTP server
@@ -87,7 +89,7 @@ password =
 # If your pyPDFserver is running behind a NAT (e.g. in a Docker container), you may want
 # to set control ports (the port used to open a connection to the external FTP server)
 # and allow them in the network settings of your firewall
-control_port = 
+control_port = 23000
 ```
 
 

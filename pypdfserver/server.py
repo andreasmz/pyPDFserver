@@ -363,6 +363,7 @@ class PDF_FTPServer:
                         self.passive_ports.append(int(x.strip()))
             except ValueError:
                 raise ConfigError(f"Invalid list of ports in field 'passive_ports' of section 'FTP'")
+            logger.debug(f"Using passive ports {', '.join([str(x) for x in self.passive_ports])}")
 
         handler = PDF_FTPHandler
         handler.authorizer = authorizer

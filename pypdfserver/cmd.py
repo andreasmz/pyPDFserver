@@ -114,7 +114,12 @@ class CmdLib(PromptShell):
 def start_pyPDFserver():
     from . import pdf_server
 
+    use_prompt_session = False
     try:
+        try:
+            use_prompt_session = config.getboolean("SETTINGS", "use_prompt_session")
+        except ValueError:
+            raise ConfigError(f"Missing or invalid field 'use_prompt_session' in section 'SETTINGS'")
         pdf_server = PDF_FTPServer()
     except ConfigError as ex:
         logger.error(f"Configuration error: {ex.msg}. Terminating pyPDFserver")
@@ -122,5 +127,7 @@ def start_pyPDFserver():
             if pdf_server is not None: pdf_server.stop()
         except Exception as ex:
             logger.error(f"Failed to stop the FTP server: ", exc_info=True)
-    cmd_lib = CmdLib()
-    cmd_lib.run()
+
+    if use_prompt_session:
+        cmd_lib = CmdLib()
+        cmd_lib.run()
