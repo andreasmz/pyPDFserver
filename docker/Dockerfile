@@ -16,8 +16,6 @@ RUN apt-get update && \
 
 COPY dist/python-package-distributions /tmp/dist
 
-RUN echo "Dateien im current temp folder folder:" && ls /tmp/dist -l -a
-
 RUN pip install --no-cache-dir /tmp/dist/*.whl
 
 VOLUME ["/tmp", "/etc/pyPDFserver/", "~/.local/state/pyPDFserver/"]

@@ -141,11 +141,6 @@ jobs:
         with:
           path: docker/dist
 
-      - name: Debug artifact folder
-        run: |
-          ls -l docker/dist
-          ls -l docker
-
       - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
         with:
