@@ -5,11 +5,12 @@ FROM python:3.13-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ocrmypdf \
-        tesseract-data-osd \
-        tesseract-data-eng \
-        tesseract-data-deu \
-        tesseract-data-fra \
-        tesseract-data-spa \
+        tesseract-ocr \
+        tesseract-ocr-osd \
+        tesseract-ocr-eng \
+        tesseract-ocr-deu \
+        tesseract-ocr-fra \
+        tesseract-ocr-spa \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
