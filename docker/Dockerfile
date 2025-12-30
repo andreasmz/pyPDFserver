@@ -15,7 +15,6 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 COPY dist /tmp/dist/
-COPY dist2 /tmp/dist/
 
 RUN echo "Dateien im current temp folder folder:" && ls /tmp/dist/ -l -a
 
