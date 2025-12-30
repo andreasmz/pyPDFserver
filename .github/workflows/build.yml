@@ -139,13 +139,18 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ./docker/dist
+          path: docker/dist
+
+      - name: Debug artifact folder
+        run: |
+          echo ls -l docker/dist
+          echo ls -l docker
 
       - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
         with:
-          context: ./docker  
-          file: ./docker/Dockerfile
+          context: docker  
+          file: docker/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
