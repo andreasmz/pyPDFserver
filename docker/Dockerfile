@@ -21,5 +21,5 @@ RUN pip install --no-cache-dir /tmp/dist/*.whl
 VOLUME ["/tmp", "/etc/pyPDFserver/", "~/.local/state/pyPDFserver/"]
 
 EXPOSE 21
-EXPOSE 23000-23020
+EXPOSE 23000-23010
 CMD ["python", "-m", "pypdfserver"]
