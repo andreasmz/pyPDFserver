@@ -1,0 +1,148 @@
+name: Build package and upload to pip, GitHub releases and Docker
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish-release:
+        description: 'Upload to GitHub releases'
+        default: false
+        type: boolean  
+      publish-pypi:
+        description: 'Publish to PyPI/Release?'
+        default: false
+        type: boolean
+      publish-docker:
+        description: 'Publish to DockerHub?'
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install project dependencies
+        run: |
+          pip install .
+          pip install build
+
+      - name: Build project
+        run: |
+          python -m build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+
+  publish-to-pypi:
+    name: Publish to PyPi
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish-pypi == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pypdfserver
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+    - name: Download all the dists
+      uses: actions/download-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
+    - name: Publish distribution to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+
+
+  determine-version:
+    name: Determine version from wheel
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Determine version from wheel
+        id: get_version
+        run: |
+          WHEEL=$(ls dist/*.whl | head -n 1)
+          VERSION=$(echo "$WHEEL" | sed -E 's/.*-([0-9]+(\.[0-9]+)*).*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Determined version: $VERSION"
+
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish-release == 'true'
+    needs: [build, determine-version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.determine-version.outputs.version }}
+          name: Release v${{ needs.determine-version.outputs.version }}
+          files: dist/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  docker:
+    name: Publish to DockerHub
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish-docker == 'true'
+    needs: [determine-version]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker  
+          file: ./docker/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/pypdfserver:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/pypdfserver:${{ needs.determine-version.outputs.version }}
