@@ -353,9 +353,9 @@ class PDF_FTPServer:
             logger.info(f"No local_ip set. Defaulting to 127.0.0.1")
             self.local_ip = "127.0.0.1"
 
-        self.host = config.get("FTP", "host", fallback="")
+        self.host = config.get("FTP", "public_ip", fallback="")
         if self.host == "":
-            logger.info(f"No host set. Defaulting to the local_ip value '{self.local_ip}'")
+            logger.debug(f"No public ip set. Defaulting to the local_ip value '{self.local_ip}'")
             self.host = self.local_ip
 
         try:

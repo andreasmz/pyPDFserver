@@ -1,5 +1,6 @@
 """ Implemnts a simple HTML web interface """
 
+import threading
 import uuid
 from flask import Flask, render_template_string
 
@@ -21,6 +22,22 @@ class Webinterface:
         TaskState.DEPENDENCY_FAILED: ("Dependency failed", "bi-x-circle-fill"),
         TaskState.UNKOWN_ERROR: ("Unknown error", "bi-x-circle-fill")
     }
+
+    def __init__(self) -> None:
+        try:
+            port = config.getint("WEBINTERFACE", "port")
+        except ValueError:
+            port = -1
+        if port <= 0 or port >= 2**16:
+            logger.info(f"No or invalid port set for web server. Defaulting to 80")
+            port = 80
+        self.port = port
+        
+        self.thread = threading.Thread(target=self._run, name="Flask webserver", daemon=True)
+        self.thread.start()
+
+    def _run(self) -> None:
+        app.run(host="0.0.0.0", port=self.port, debug=False, use_reload=False)
 
     @app.route("/")
     def index():
@@ -95,18 +112,10 @@ class Webinterface:
         return (i, task_groups)
 
 def launch():
+    global web_interface
     try:
         if not config.getboolean("WEBINTERFACE", "enabled"):
             return
     except ValueError:
         raise ConfigError(f"Missing or invalid field 'enabled' in section 'WEBINTERFACE'")
-    
-    try:
-        port = config.getint("WEBINTERFACE", "port")
-    except ValueError:
-        port = -1
-    if port <= 0 or port >= 2**16:
-        logger.info(f"No or invalid port set for web server. Defaulting to 80")
-        port = 80
-    
-    app.run(host="0.0.0.0", port=port, threaded=True)
+    web_interface = Webinterface()

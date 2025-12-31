@@ -407,14 +407,14 @@ def _pdfworker_handler() -> None:
     try:
         _pdfworker_loop()
     except Exception as ex:
-        logger.warning(f"The pdf worker loop crashed", exc_info=True)
+        logger.error(f"The pdf worker loop crashed", exc_info=True)
         logger.critical(f"Terminating pyPDFserver")
         exit()
 
 def _pdfworker_loop() -> None:
     """ Implements the main thread loop """
     global current_task
-    logger.debug(f"Started the pdf worker loop")
+    logger.debug(f"Started the pdf server")
     while True:
         current_task = None
 
@@ -500,7 +500,7 @@ def _pdfworker_loop() -> None:
         except TaskException as ex:
             current_task.state = TaskState.FAILED
             current_task.error = ex
-            logger.info(f"Task {str(current_task)} failed: {ex.message}")
+            logger.info(f"Task '{str(current_task)}' failed: {ex.message}")
             continue
         except Exception as ex:
             current_task.state = TaskState.FAILED

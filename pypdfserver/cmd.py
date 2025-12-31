@@ -118,12 +118,12 @@ def start_pyPDFserver():
 
     interactive_shell = False
     try:
-        html.launch()
         try:
             interactive_shell = config.getboolean("SETTINGS", "interactive_shell")
         except ValueError:
             raise ConfigError(f"Missing or invalid field 'interactive_shell' in section 'SETTINGS'")
         pdf_server = PDF_FTPServer()
+        html.launch()
     except ConfigError as ex:
         logger.error(f"Configuration error: {ex.msg}. Terminating pyPDFserver")
         try:
