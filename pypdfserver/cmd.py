@@ -16,7 +16,7 @@ class PromptShell:
         self.commands = self._collect_commands()
         self.session = PromptSession("> ",
             completer=WordCompleter(list(self.commands.keys()), ignore_case=True),
-            erase_when_done=interactive
+            output=None if interactive else DummyOutput()
         )
 
     def _collect_commands(self) -> dict[str, Callable]:
