@@ -6,21 +6,16 @@
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <style>
-    .status-scheduled { background-color: #f0f0f0; }
-    .status-running   { background-color: #e7f1ff; }
-    .status-finished  { background-color: #e6f4ea; }
-    .status-failed    { background-color: #fdecea; }
-
     .job-row { cursor: pointer; }
-    .subjob-table td { padding-left: 3rem; }
   </style>
 </head>
 <body class="bg-light">
 
 <div class="container my-4">
-  <h3 class="mb-4">pyPDFserver – {{ num_scheduled }} scheduled jobs </h3>
+  <h3 class="mb-4">pyPDFserver {{version}} </h3>
 
   <div class="table-responsive">
     <table class="table table-bordered align-middle">
@@ -29,7 +24,7 @@
           <th></th>
           <th>Status</th>
           <th>Name</th>
-          <th>Created</th>
+          <th>Started</th>
           <th>Finished</th>
           <th>Runtime</th>
         </tr>
@@ -40,24 +35,36 @@
             <td><i class="bi bi-chevron-down"></i></td>
             <td><i class="bi {{ task_group.state_icon }}"></i> {{ task_group.state_name }}</td>
             <td>{{ task_group.name }}</td>
-            <td>{{ task_group.time_created }}</td>
+            <td>{{ task_group.time_started }}</td>
             <td>{{ task_group.time_finished }}</td>
             <td>{{ task_group.runtime }}</td>
           </tr>
           <tr class="collapse" id="{{task_group.html_id}}">
             <td colspan="6">
               <div class="table-responsive">
-                <table class="table subjob-table mb-0">
+                <table class="table subtable mb-0 ml-2">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Status</th>
+                      <th>Name</th>
+                      <th>Decription</th>
+                      <th>Started</th>
+                      <th>Finished</th>
+                      <th>Runtime</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                   {% for task in task_group.tasks %}
                     <tr>
-                      <td></td>
                       <td><i class="bi {{ task.state_icon }}"></i> {{ task.state_name }}</td>
                       <td>{{ task.name }}</td>
-                      <td>{{ task.time_created }}</td>
+                      <td>{% if task.error %}<span class="text-danger">{{task.error}}<br></span>{% endif %}{{ task.desc }}</td>
+                      <td>{{ task.time_started }}</td>
                       <td>{{ task.time_finished }}</td>
-                      <td>{{ task.time_runtime }}</td>
+                      <td>{{ task.runtime }}</td>
                     </tr>
                   {% endfor %}
+                  </tbody>
                 </table>
               </div>
             </td>

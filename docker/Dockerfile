@@ -23,6 +23,7 @@ COPY dist/python-package-distributions /tmp/dist
 
 RUN pip install --no-cache-dir /tmp/dist/*.whl
 
+EXPOSE 80
 EXPOSE 21
 EXPOSE 23000-23010
 CMD ["python", "-m", "pypdfserver"]

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template_string, render_template
 
 from .core import *
+from . import __version__
 from .pdf_worker import Task, TaskState
 
 app = Flask(__name__)
@@ -19,11 +20,11 @@ log.logging.getLogger("werkzeug").setLevel(log.logging.ERROR)
 class Webinterface:
 
     state_map: dict[TaskState, tuple[str, str]] = {
-        TaskState.CREATED: ("Created", "bi-clock-fill text-secondary"),
+        TaskState.CREATED: ("", "bi-clock-fill text-secondary"),
         TaskState.SCHEDULED: ("Scheduled", "bi-clock-fill text-secondary"),
         TaskState.WAITING: ("Waiting", "bi-arrow-repeat text-secondary"),
         TaskState.RUNNING: ("Running", "bi-arrow-repeat text-primary"),
-        TaskState.FINISHED: ("Finished", "bi-check-circle-fill text-success"),
+        TaskState.FINISHED: ("", "bi-check-circle-fill text-success"),
         TaskState.FAILED: ("Failed", "bi-x-circle-fill text-danger"),
         TaskState.ABORTED: ("Aborted", "bi-x-circle-fill text-danger"),
         TaskState.DEPENDENCY_FAILED: ("Canceled", "bi-x-circle-fill text-danger"),
@@ -56,17 +57,19 @@ class Webinterface:
         task_groups = [{"uuid": group_uuid, 
                         "html_id": f"group_{group_uuid.replace('-','_')}", 
                         "name": group_name, 
-                        "time_created": Webinterface.format_datetime(min([t.t_created for t in tasks])),
-                        "time_finished": "",
-                        "runtime": "",
+                        "time_started": Webinterface.format_datetime(Webinterface.get_task_group_t_start(tasks)),
+                        "time_finished": Webinterface.format_datetime(Webinterface.get_task_group_t_end(tasks)),
+                        "runtime": Webinterface.format_timespan(Webinterface.get_task_group_runtime(tasks)),
                         "state_name": Webinterface.state_map.get(group_state, ("Unkown", "bi-question-circle"))[0],
                         "state_icon": Webinterface.state_map.get(group_state, ("Unkown", "bi-question-circle"))[1],
                         "tasks": [
                             {
                                 "uuid": t.uuid,
-                                "name": str(t),
-                                "time_created": Webinterface.format_datetime(t.t_created),
-                                "time_finished": Webinterface.format_datetime_ago(t.t_end),
+                                "name": t.name,
+                                "error": t.error.message if t.error is not None else "",
+                                "desc": t.desc,
+                                "time_started": Webinterface.format_datetime(t.t_start),
+                                "time_finished": Webinterface.format_datetime(t.t_end),
                                 "runtime": Webinterface.format_timespan(t.runtime),
                                 "state_name": Webinterface.state_map.get(t.state, ("Unkown", "bi-question-circle"))[0],
                                 "state_icon": Webinterface.state_map.get(t.state, ("Unkown", "bi-question-circle"))[1],
@@ -74,17 +77,60 @@ class Webinterface:
                         for t in tasks],
                        } for group_uuid, (group_name, group_state, tasks) in group_dict.items()]
         
-        return render_template_string(html, task_groups=task_groups, num_scheduled=num_scheduled_tasks)
+        return render_template_string(html, task_groups=task_groups, version=__version__)
+
+
+    @classmethod
+    def get_task_group_t_created(cls, tasks: list[Task]) -> datetime|None:
+        t_created = datetime.max
+        for t in tasks:
+            if t.t_created is None:
+                continue
+            t_created = min(t_created, t.t_created)
+        if t_created == datetime.max:
+            return None
+        return t_created
     
     @classmethod
-    def format_datetime(cls, dt: datetime) -> str:
+    def get_task_group_t_start(cls, tasks: list[Task]) -> datetime|None:
+        start_time = datetime.max
+        for t in tasks:
+            if t.t_start is None:
+                continue
+            start_time = min(start_time, t.t_start)
+        if start_time == datetime.max:
+            return None
+        return start_time
+    
+    @classmethod
+    def get_task_group_t_end(cls, tasks: list[Task]) -> datetime|None:
+        end_time = datetime.min
+        for t in tasks:
+            if t.t_end is None:
+                return None
+            end_time = max(end_time, t.t_end)
+        if end_time == datetime.min:
+            return None
+        return end_time
+    
+    @classmethod
+    def get_task_group_runtime(cls, tasks: list[Task]) -> timedelta|None:
+        t_start, t_end = cls.get_task_group_t_start(tasks), cls.get_task_group_t_end(tasks)
+        if t_start is None or t_end is None:
+            return None
+        return t_end - t_start
+
+    @classmethod
+    def format_datetime(cls, dt: datetime|None) -> str:
+        if dt is None:
+            return ""
         today = datetime.now()
         if dt.date() == today.date():
             return dt.strftime("%H:%M:%S")
         return dt.strftime("%Y-%m-%d")
     
     @classmethod
-    def format_datetime_ago(cls, dt: datetime|None) -> str:
+    def format_datetime_difference(cls, dt: datetime|None) -> str:
         if dt is None:
             return ""
         return cls.format_timespan(datetime.now() - dt) + " ago"
@@ -99,11 +145,11 @@ class Webinterface:
         minutes = (seconds % 3600) // 60 
         seconds = seconds % 60
         if days > 0:
-            return f"{days}:{hours:2}:{minutes:2};{seconds:2}"
+            return f"{days}:{hours:02d}:{minutes:02d};{seconds:02d}"
         elif hours > 0:
-            return f"{hours:2}:{minutes:2}:{seconds:2}"
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         elif minutes > 0:
-            return f"{minutes:2}:{seconds:2}"
+            return f"{minutes:02d}:{seconds:02d}"
         else:
             return f"{seconds} s"
 

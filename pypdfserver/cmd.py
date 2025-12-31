@@ -75,14 +75,20 @@ class CmdLib(PromptShell):
                 for t in pdf_worker.Task.task_list:
                     s.append(f"{t.state.name:>18}   {str(t):<40}")
                 logger.info('\n'.join(s))
-            case "force_clear":
+            case "clean":
+                pdf_worker.clean()
+            case "abort":
+                for t in pdf_worker.Task.task_list:
+                    if not type(t) == pdf_worker.Task and t.state in [pdf_worker.TaskState.CREATED, pdf_worker.TaskState.SCHEDULED, pdf_worker.TaskState.WAITING]:
+                        t.try_abort()
+            case "clear":
                 for t in pdf_worker.Task.task_list.copy():
                     if t.state != pdf_worker.TaskState.RUNNING:
                         logger.debug(f"Forced removed tasks '{str(t)}' (state {t.state})")
                         pdf_worker.Task.task_list.remove(t)
                         t.clean_up()    
             case _:
-                logger.info(f"Syntax: tasks list|force_clear")
+                logger.info(f"Syntax: tasks list|clean|clear|abort")
         
     def cmd_artifacts(self, *args: str) -> None:
         from . import pdf_server

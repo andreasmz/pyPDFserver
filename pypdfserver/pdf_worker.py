@@ -54,10 +54,11 @@ class Artifact:
 
     temp_dir = pyPDFserver_temp_dir_path / "artifacts"
 
-    def __init__(self, task: "Task|None", name: str) -> None:
+    def __init__(self, task: "Task|None", name: str, _log: bool = True) -> None:
         self.task = task
         self.name = name
-        logger.debug(f"Created artifact '{name}'" + (f" for task '{str(task)}'" if task is not None else ""))
+        if _log:
+            logger.debug(f"Created artifact '{name}'" + (f" for task '{str(task)}'" if task is not None else ""))
 
     def cleanup(self) -> None:
         """ Clean up the resources of the artifact """
@@ -82,11 +83,11 @@ class FileArtifact(Artifact):
     """
 
     def __init__(self, task: "Task|None", name: str) -> None:
-        super().__init__(task, name)
+        super().__init__(task, name, _log=False)
 
         prefix = f"artifact_{name}"
         if self.task is not None:
-            prefix = f"{type(task).__name__}_{name}"
+            prefix = f"{type(task).__name__}_{name}."
 
         self._temp_file = tempfile.NamedTemporaryFile(dir=Artifact.temp_dir, prefix=prefix, suffix=".bin", delete=False)
         self._temp_file.close()
@@ -95,9 +96,9 @@ class FileArtifact(Artifact):
         self._finalizer = weakref.finalize(self, FileArtifact._cleanup, self.path, self.name, str(self.task) if self.task is not None else None)
 
         try:
-            logger.debug(f"Created temporary file '{self.path.relative_to(Artifact.temp_dir)}' for artifact '{name}'" + (f" of task '{str(task)}'" if self.task is not None else ""))
+            logger.debug(f"Created FileArtifact '{self.name}' at '{self.path.relative_to(Artifact.temp_dir)}'" + (f" of task '{str(task)}'" if self.task is not None else ""))
         except ValueError:
-            logger.error(f"Temporary file '{self.path}' is not in the temporary directory ('{Artifact.temp_dir}')")
+            logger.error(f"Failed to create FileArtifact '{self.name}': '{self.path}' is not in the temporary directory ('{Artifact.temp_dir}')")
 
     def cleanup(self) -> None:
         logger.debug(f"Cleanup for temporary artifact '{self.name}'"+ (f" of task '{str(self.task)}'" if self.task is not None else ""))
@@ -148,6 +149,15 @@ class Task:
         """ Called when a Task is executed """
         raise NotImplementedError(f"The given task does not implement a run() method")
     
+    def try_abort(self):
+        if self.state in [TaskState.CREATED, TaskState.SCHEDULED, TaskState.WAITING]:
+            self.state = TaskState.ABORTED
+            logger.info(f"Aborted task '{str(self)}'")
+        elif self.state == TaskState.RUNNING:
+            logger.debug(f"Task '{str(self)}' is running and can not be aborted")
+        else:
+            logger.debug(f"Task '{str(self)}' has finished and can not be aborted")
+    
     def clean_up(self) -> None:
         """ Clean up the artifacts and release their resources """
         logger.debug(f"Cleaning up task '{str(self)}'")
@@ -170,6 +180,14 @@ class Task:
         if self.t_start is None or self.t_end is None:
             return None
         return self.t_end - self.t_start
+    
+    @property
+    def name(self) -> str:
+        return "Generic Task"
+    
+    @property
+    def desc(self) -> str:
+        return ""
     
     def __repr__(self) -> str:
         return f"<{str(self)}>"
@@ -246,6 +264,15 @@ class UploadToFTPTask(Task):
         finally:
             ftp.close()    
 
+    @property
+    def name(self) -> str:
+        return "Upload to FTP"
+    
+    @property
+    def desc(self) -> str:
+        return f"{self.address[0]}:{self.address[1]}@{self.username}:{self.folder}"
+
+
     def __str__(self) -> str:
         return f"Upload '{self.file_name}'"
 
@@ -283,6 +310,14 @@ class PDFTask(Task):
 
     def __str__(self) -> str:
         return f"Decode PDF '{self.file_name}'"
+
+    @property
+    def name(self) -> str:
+        return "Decode PDF"
+    
+    @property
+    def desc(self) -> str:
+        return ""
         
 
 class OCRTask(Task):
@@ -334,11 +369,24 @@ class OCRTask(Task):
             raise TaskException(exit_code.name)
         logger.debug(f"Applied OCR for '{self.file_name}' (lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages})")
         
+    @property
+    def name(self) -> str:
+        return "OCR"
+    
+    @property
+    def desc(self) -> str:
+        return self.param_str
+    
+    @property
+    def param_str(self) -> str:
+        return f"lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages}"
+
     def __repr__(self) -> str:
-        return f"<OCR '{self.file_name}' (lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages})>"
+        return f"<OCR '{self.file_name}' ({self.param_str})>"
 
     def __str__(self) -> str:
         return f"OCR '{self.file_name}'"
+    
         
 class DuplexTask(Task):
 
@@ -397,8 +445,18 @@ class DuplexTask(Task):
         except pypdf.errors.PyPdfError as ex:
             raise TaskException(f"Failed to merge '{self.file1_name}' with '{self.file2_name}': {str(ex)}")
         
+            
+    @property
+    def name(self) -> str:
+        return "Merge to duplex"
+    
+    @property
+    def desc(self) -> str:
+        return ""
+        
     def __str__(self) -> str:
         return f"Create duplex pdf '{self.export_name}'"
+
 
 task_queue: Queue[Task] = Queue()
 task_priority_queue: Queue[Task] = Queue()
@@ -412,6 +470,43 @@ def _pdfworker_handler() -> None:
         logger.critical(f"Terminating pyPDFserver")
         exit()
 
+def clean() -> None:
+    for t in Task.task_list.copy():
+        # First remove old tasks
+        if (datetime.now() - t.t_created).total_seconds() > (60*60):
+            Task.task_list.remove(t)
+            t.clean_up()
+            match t.state:
+                case TaskState.RUNNING:
+                    logger.info(f"Running task '{str(t)}' marked for time out")
+                case TaskState.CREATED | TaskState.SCHEDULED | TaskState.WAITING:
+                    logger.info(f"Task '{str(t)}' timed out")
+                case _:
+                    logger.debug(f"Garbage collected task '{str(t)}'")
+            continue
+
+        # Now check if waiting task is ready (put to priority queue) or has failed dependencies
+        if t.state != TaskState.WAITING:
+            continue
+
+        task_ready = True
+        for d in t.dependencies:
+            match d.state:
+                case TaskState.CREATED | TaskState.SCHEDULED | TaskState.WAITING | TaskState.RUNNING:
+                    task_ready = False
+                case TaskState.FINISHED:
+                    pass
+                case _:
+                    task_ready = False
+                    t.state = TaskState.DEPENDENCY_FAILED
+                    break
+        if t.state != TaskState.WAITING:
+            logger.debug(f"Task '{str(t)}' was marked as DEPENDENCY_FAILED")
+        elif task_ready:
+            t.state = TaskState.SCHEDULED
+            task_priority_queue.put(t)
+            logger.debug(f"Task '{str(t)}' was moved from WAITING to SCHEDULED")
+
 def _pdfworker_loop() -> None:
     """ Implements the main thread loop """
     global current_task
@@ -419,40 +514,7 @@ def _pdfworker_loop() -> None:
     while True:
         current_task = None
 
-        # Check first if a waiting task has failed dependencies (move it to finished task list) or is ready for scheduling (put to priority queue)
-        for t in Task.task_list.copy():
-            if (datetime.now() - t.t_created).total_seconds() > (60*60):
-                Task.task_list.remove(t)
-                t.clean_up()
-                match t.state:
-                    case TaskState.RUNNING:
-                        pass
-                    case TaskState.CREATED | TaskState.SCHEDULED | TaskState.WAITING:
-                        logger.info(f"Task '{str(t)}' timed out")
-                    case _:
-                        logger.debug(f"Garbage collected task '{str(t)}'")
-                continue
-
-            if t.state != TaskState.WAITING:
-                continue
-
-            task_ready = True
-            for d in t.dependencies:
-                match d.state:
-                    case TaskState.CREATED | TaskState.SCHEDULED | TaskState.WAITING | TaskState.RUNNING:
-                        task_ready = False
-                    case TaskState.FINISHED:
-                        pass
-                    case _:
-                        task_ready = False
-                        t.state = TaskState.DEPENDENCY_FAILED
-                        break
-            if t.state != TaskState.WAITING:
-                logger.debug(f"Task '{str(t)}' was marked as DEPENDENCY_FAILED")
-            elif task_ready:
-                t.state = TaskState.SCHEDULED
-                task_priority_queue.put(t)
-                logger.debug(f"Task '{str(t)}' was moved from WAITING to SCHEDULED")
+        clean()
 
         # Get next task
         try:
@@ -466,9 +528,11 @@ def _pdfworker_loop() -> None:
         if current_task not in Task.task_list:
             logger.debug(f"Skipped task '{str(current_task)}' as it timed out")
             continue
+        elif current_task.state == TaskState.ABORTED:
+            continue
         elif current_task.state != TaskState.SCHEDULED:
             current_task.state = TaskState.UNKOWN_ERROR
-            logger.debug(f"Unexpected TaskState {current_task.state} for task '{current_task}' in queue")
+            logger.debug(f"Unexpected TaskState {current_task.state} for task '{current_task}' in queue. Skipping it")
             continue
 
         current_task.state = TaskState.RUNNING
@@ -477,10 +541,10 @@ def _pdfworker_loop() -> None:
         dependencies_resolved = True
         for d in current_task.dependencies:
             match d.state:
-                case TaskState.CREATED | TaskState.SCHEDULED | TaskState.WAITING | TaskState.RUNNING:
-                    dependencies_resolved = False
                 case TaskState.FINISHED:
                     pass
+                case TaskState.CREATED | TaskState.SCHEDULED | TaskState.WAITING | TaskState.RUNNING:
+                    dependencies_resolved = False
                 case _:
                     dependencies_resolved = False
                     current_task.state = TaskState.DEPENDENCY_FAILED

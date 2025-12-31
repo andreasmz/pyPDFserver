@@ -75,6 +75,7 @@ class PDF_FTPHandler(FTPHandler):
             logger.info(f"Received duplex front pages '{file_name}' by user '{self.username}'")
             if profile.duplex_pdf_cache is not None:
                 logger.info(f"Discarding previous duplex pront pages '{profile.duplex_pdf_cache[2]}'")
+                cast(Task, profile.duplex_pdf_cache.task).try_abort()
 
             group = str(uuid.uuid4())
             tasks: list[Task] = [Task(hidden=True, group=group)]
@@ -112,10 +113,10 @@ class PDF_FTPHandler(FTPHandler):
 
             export_name = profile.export_duplex_template
             export_name = export_name.replace("(lang)", profile.ocr_language)
-            if "s" in cast(re.Match, profile.duplex_pdf_cache.file1_regex).groups():
+            if "s" in cast(re.Match, profile.duplex_pdf_cache.file1_regex).groupdict():
                 export_name = export_name.replace("(*)", cast(re.Match, profile.duplex_pdf_cache.file1_regex).group("s"))
                 export_name = export_name.replace("(*1)", cast(re.Match, profile.duplex_pdf_cache.file1_regex).group("s"))
-            if "s" in r.groups():
+            if "s" in r.groupdict():
                 export_name = export_name.replace("(*2)", r.group("s"))
             
             group = cast(Task, profile.duplex_pdf_cache.task).group
@@ -166,8 +167,7 @@ class PDF_FTPHandler(FTPHandler):
 
             export_name = profile.export_pdf_template
             export_name = export_name.replace("(lang)", profile.ocr_language)
-            if "s" in r.groups():
-                export_name = export_name.replace("(*2)", r.group("s"))
+            export_name = export_name.replace("(*)", r.group("s"))
 
             group = str(uuid.uuid4())
             tasks: list[Task] = [Task(hidden=True, group=group)]
