@@ -2,6 +2,7 @@
 
 import threading
 import uuid
+from datetime import datetime, timedelta
 from flask import Flask, render_template_string, render_template
 
 from .core import *
@@ -18,15 +19,15 @@ log.logging.getLogger("werkzeug").setLevel(log.logging.ERROR)
 class Webinterface:
 
     state_map: dict[TaskState, tuple[str, str]] = {
-        TaskState.CREATED: ("Created", "bi-clock-fill"),
-        TaskState.SCHEDULED: ("Scheduled", "bi-clock-fill"),
-        TaskState.WAITING: ("Waiting", "bi-arrow-repeat"),
-        TaskState.RUNNING: ("Running", "bi-arrow-repeat"),
-        TaskState.FINISHED: ("Finished", "bi-check-circle-fill"),
-        TaskState.FAILED: ("Failed", "bi-x-circle-fill"),
-        TaskState.ABORTED: ("Aborted", "bi-x-circle-fill"),
-        TaskState.DEPENDENCY_FAILED: ("Canceled", "bi-x-circle-fill"),
-        TaskState.UNKOWN_ERROR: ("Unknown error", "bi-x-circle-fill")
+        TaskState.CREATED: ("Created", "bi-clock-fill text-secondary"),
+        TaskState.SCHEDULED: ("Scheduled", "bi-clock-fill text-secondary"),
+        TaskState.WAITING: ("Waiting", "bi-arrow-repeat text-secondary"),
+        TaskState.RUNNING: ("Running", "bi-arrow-repeat text-primary"),
+        TaskState.FINISHED: ("Finished", "bi-check-circle-fill text-success"),
+        TaskState.FAILED: ("Failed", "bi-x-circle-fill text-danger"),
+        TaskState.ABORTED: ("Aborted", "bi-x-circle-fill text-danger"),
+        TaskState.DEPENDENCY_FAILED: ("Canceled", "bi-x-circle-fill text-danger"),
+        TaskState.UNKOWN_ERROR: ("Unknown error", "bi-x-circle-fill text-danger")
     }
 
     def __init__(self) -> None:
@@ -55,12 +56,18 @@ class Webinterface:
         task_groups = [{"uuid": group_uuid, 
                         "html_id": f"group_{group_uuid.replace('-','_')}", 
                         "name": group_name, 
+                        "time_created": Webinterface.format_datetime(min([t.t_created for t in tasks])),
+                        "time_finished": "",
+                        "runtime": "",
                         "state_name": Webinterface.state_map.get(group_state, ("Unkown", "bi-question-circle"))[0],
                         "state_icon": Webinterface.state_map.get(group_state, ("Unkown", "bi-question-circle"))[1],
                         "tasks": [
                             {
                                 "uuid": t.uuid,
                                 "name": str(t),
+                                "time_created": Webinterface.format_datetime(t.t_created),
+                                "time_finished": Webinterface.format_datetime_ago(t.t_end),
+                                "runtime": Webinterface.format_timespan(t.runtime),
                                 "state_name": Webinterface.state_map.get(t.state, ("Unkown", "bi-question-circle"))[0],
                                 "state_icon": Webinterface.state_map.get(t.state, ("Unkown", "bi-question-circle"))[1],
                             }
@@ -69,6 +76,36 @@ class Webinterface:
         
         return render_template_string(html, task_groups=task_groups, num_scheduled=num_scheduled_tasks)
     
+    @classmethod
+    def format_datetime(cls, dt: datetime) -> str:
+        today = datetime.now()
+        if dt.date() == today.date():
+            return dt.strftime("%H:%M:%S")
+        return dt.strftime("%Y-%m-%d")
+    
+    @classmethod
+    def format_datetime_ago(cls, dt: datetime|None) -> str:
+        if dt is None:
+            return ""
+        return cls.format_timespan(datetime.now() - dt) + "ago"
+        
+    @classmethod
+    def format_timespan(cls, delta: timedelta|None) -> str:
+        if delta is None:
+            return ""
+        days = delta.days
+        seconds = delta.seconds
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60 
+        seconds = seconds % 60
+        if days > 0:
+            return f"{days}:{hours}:{minutes};{seconds}"
+        elif hours > 0:
+            return f"{hours}:{minutes}:{seconds}"
+        elif minutes > 0:
+            return f"{minutes}:{seconds}"
+        else:
+            return f"{seconds} s"
 
     @classmethod
     def get_tasks(cls) -> tuple[tuple[int, int, int], dict[str, tuple[str, TaskState, list[Task]]]]:

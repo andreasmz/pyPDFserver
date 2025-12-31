@@ -165,6 +165,7 @@ class Task:
         self.artifacts[artifact.name] = artifact
         return artifact
     
+    @property
     def runtime(self) -> timedelta|None:
         if self.t_start is None or self.t_end is None:
             return None
