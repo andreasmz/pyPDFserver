@@ -19,6 +19,10 @@ python -m pyPDFserver
 
 After first run, two configruation files will be created in your systems configruation folder (refer to the console output to extract the exact paths) named `pyPDFserver.ini` and `profiles.ini`. You need to modify them with your settings and restart pyPDFserver.
 
+### Docker
+
+A docker image is available including the most popular languages.
+
 ### Usage
 
 Now simply connect to your FTP server and upload files. After some time (OCR may take several minutes), they will be uploaded to your server.
@@ -57,103 +61,117 @@ Some internal commands you don't usually need to use:
 
 ```ini
 [SETTINGS]
-# Set here the desired log level (CRITICAL, ERROR, WARNING, INFO, DEBUG)
+# Set the desired log level (CRITICAL, ERROR, WARNING, INFO, DEBUG)
 log_level = INFO
 # If set to False, disable interactive console input
-use_prompt_session = False
-# If set to true, use colors for the console output
+interactive_shell = False
+# If set to True, enable colored console output
 log_colors = True
-# If set to true, create log files
+# If set to True, create log files
 log_to_file = True
-# Time for the backpages of a duplex scan to arrive after the front page upload before
-# timing out. Set to zero to disable the timeout
+# Time (in seconds) to wait for the back pages of a duplex scan after the
+# front page upload before timing out. Set to zero to disable the timeout.
 duplex_timeout = 600
-# If set to True, pyPDFserver will search after start for old temporary files and delete them
+# If set to True, pyPDFserver will search for old temporary files at startup
+# and delete them
 clean_old_temporary_files = True
 
 [FTP]
-host = 
 local_ip = 127.0.0.1
 port = 21
-# Define passive ports as a comma seperated list, e.g. 6000,6001,6010-6020,6030
-# If running behind a NAT (e.g. in a Docker container), you should define some ports here
-# and allow them in the network setings of your firewall
+# If pyPDFserver is running behind a NAT, you may need to set the IP address
+# that clients use to connect to the FTP server to prevent foreign address errors.
+public_ip = 
+# In FTP passive mode, clients open both control and data connections to bypass
+# NATs on the client side. If pyPDFserver itself is running behind a NAT, you
+# need to open the passive ports. By default, FTP servers use random ports, but
+# you can define a custom list or range of ports.
+# Write them as a comma-separated list (e.g. 6000,6010-6020,6030).
 passive_ports = 23001-23010
 
 [EXPORT_FTP_SERVER]
-# Set here the address and credentials for the external FTP server
+# Set the address and credentials for the external FTP server
 host = 
 port = 
 username = 
 password = 
-# If your pyPDFserver is running behind a NAT (e.g. in a Docker container), you may want
-# to set control ports (the port used to open a connection to the external FTP server)
-# and allow them in the network settings of your firewall
+# If pyPDFserver is running behind a NAT (e.g. in a Docker container), you may
+# want to define control ports (the ports used to open connections to the
+# external FTP server) and allow them in your firewall settings.
 control_port = 23000
+
+[WEBINTERFACE]
+# If set to True, start a simple web interface to display currently scheduled,
+# running, and finished tasks
+enabled = True
+# Set the port for the web server. If empty, it defaults to 80 or 443 (TLS enabled).
+port = 
 ```
 
 
 ##### profiles.ini
 
 ```ini
-# You can define different profiles to use different settings (e.g. different languages for OCR,
-# different optimization levels or file names). Every profile must have a unique username.
-# All other fields fallback to the DEFAULT profile if not provided. 
+# You can define multiple profiles to use different settings (e.g. different OCR languages,
+# optimization levels, or file name templates). Each profile must have a unique username.
+# Any fields not explicitly set will fall back to the DEFAULT profile.
 
 
 [DEFAULT]
-# The username for the FTP server
+# Username for the FTP server
 username = pyPDFserver
-# The password for the FTP server. Note that after first run it will be replaced with
-# a hash value. To change it, remove its value and set it your password. After next run,
-# it will be again replace with it hash value
+# Password for the FTP server. Note that after the first run it will be replaced with
+# a hash value. To change the password later, remove its value and set a new password.
+# After the next run, it will again be replaced with its hash value.
 password = 
 
 # OCR settings
-# Refer to https://ocrmypdf.readthedocs.io/en/latest/optimizer.html for a more thorough explanation
+# Refer to https://ocrmypdf.readthedocs.io/en/latest/optimizer.html for a more detailed explanation
 
 ocr_enabled = False
-# Set the three letter country code for tesseract OCR. You must first install the language 
-# pack for tesseract
+# Set the three-letter language code for Tesseract OCR.
+# You must install the corresponding Tesseract language pack first.
 ocr_language = 
-# Correct pages that were scanned at a skewed angle by rotating them back into place
+# Correct pages that were scanned at a skewed angle by rotating them into alignment
 # (--deskew option for OCRmyPDF)
 ocr_deskew = True
 # Optimization level passed to OCRmyPDF
-# (e.g. 0: No optimization, 1: lossless optimiations, 2: some lossy optimizations, 3: aggressive optimization)
+# (e.g. 0: no optimization, 1: lossless optimizations,
+#  2: some lossy optimizations, 3: aggressive optimization)
 ocr_optimize = 1
-# Attempts to determine the correct orientation for each page and rotates the page if necessary
-# (--rotate-pages paramter for OCRmyPDF)
+# Attempt to determine the correct orientation for each page and rotate it if necessary
+# (--rotate-pages parameter for OCRmyPDF)
 ocr_rotate_pages = True
-# (--tesseract-timeout paramter for OCRmyPDF)
+# Timeout (in seconds) for Tesseract processing per page
+# (--tesseract-timeout parameter for OCRmyPDF)
 ocr_tesseract_timeout = 60
 
 # File name settings
-# When uploading a file to pyPDFserver, it is matched against the given template strings
-# and rejected if not matching any. You can use tags (which are replaced by pyPDFserver with
-# regex commands) to catch groups
-# Availabe tags:
-#   (lang): Catch 3 Letter language code
-#   (*): Catch everything
-# In the export_duple_name you can also use
-#   (*1): Fill in (*) from duplex1
-#   (*2): Fill in (*) from duplex2
+# When uploading a file to pyPDFserver, it is matched against the defined template strings
+# and rejected if it does not match any of them. You can use tags (which pyPDFserver replaces
+# with regular expression patterns) to capture groups.
+# Available tags:
+#   (lang): capture a three-letter language code. Multiple languages can be given (seperated by comma)
+#   (*): capture any content
+# In export_duplex_name you can also use:
+#   (*1): insert the (*) match from duplex1
+#   (*2): insert the (*) match from duplex2
 
-# If set to true, all file names 
+# If set to True, file name matching is case-sensitive
 input_case_sensitive = True
-# Template string for pdf files
+# Template string for incoming PDF files
 input_pdf_name = SCAN_(*).pdf
-# Template string to export pdf files
+# Template string for exported PDF files
 export_pdf_name = Scan_(*).pdf
-# Template string for duplex pdf files (1 for front pages, 2 for back pages)
+# Template strings for duplex PDF files (1 = front pages, 2 = back pages)
 input_duplex1_name = DUPLEX1_(*).pdf
 input_duplex2_name = DUPLEX2_(*).pdf
-# Template string to export duplex pdf files
+# Template string for exported duplex PDF files
 export_duplex_name = Scan_(*1)_(lang).pdf
-# Path on the external FTP server to upload to
+# Target path on the external FTP server for uploaded files
 export_path = 
 
-# Two example profiles. You can define as many as you like
+# Two example profiles. You can define as many profiles as you like
 [DE]
 username = pyPDFserver_de
 ocr_enabled = True
@@ -163,5 +181,6 @@ ocr_language = deu
 username = pyPDFserver_en
 ocr_enabled = True
 ocr_language = eng
+
 ```
 

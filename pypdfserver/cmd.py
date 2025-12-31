@@ -130,6 +130,7 @@ def start_pyPDFserver():
             if pdf_server is not None: pdf_server.stop()
         except Exception as ex:
             logger.error(f"Failed to stop the FTP server: ", exc_info=True)
+        exit()
 
     cmd_lib = CmdLib(interactive_shell)
     cmd_lib.run()
