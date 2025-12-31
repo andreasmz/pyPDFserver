@@ -36,27 +36,30 @@
       </thead>
       <tbody>
         {% for task_group in task_groups %}
-          <tr class="job-row status-running" data-bs-toggle="collapse" data-bs-target="#{{task_group.uuid}}">
+          <tr class="job-row status-running" data-bs-toggle="collapse" data-bs-target="#{{task_group.html_id}}">
             <td><i class="bi bi-chevron-down"></i></td>
+            <td><i class="bi {{ task_group.state_icon }}"></i> {{ task_group.state_name }}</td>
             <td>{{ task_group.name }}</td>
             <td>{{ task_group.time_created }}</td>
             <td>{{ task_group.time_finished }}</td>
             <td>{{ task_group.runtime }}</td>
-            <td><i class="bi {{ task_group.state_icon }}"></i> {{ task_group.state_name }}</td>
           </tr>
-          <tr class="collapse" id="{{task_group.uuid}}">
-            <td colspan="4">
-              <table class="table subjob-table mb-0">
-                {% for task in task_group.tasks %}
-                  <tr>
-                    <td><i class="bi {{ task.state_icon }}"></i> {{ task.state_name }}</td>
-                    <td>{{ task.name }}</td>
-                    <td>{{ task.time_created }}</td>
-                    <td>{{ task.time_finished }}</td>
-                    <td>{{ task.time_runtime }}</td>
-                  </tr>
-                {% endfor %}
-              </table>
+          <tr class="collapse" id="{{task_group.html_id}}">
+            <td colspan="6">
+              <div class="table-responsive">
+                <table class="table subjob-table mb-0">
+                  {% for task in task_group.tasks %}
+                    <tr>
+                      <td></td>
+                      <td><i class="bi {{ task.state_icon }}"></i> {{ task.state_name }}</td>
+                      <td>{{ task.name }}</td>
+                      <td>{{ task.time_created }}</td>
+                      <td>{{ task.time_finished }}</td>
+                      <td>{{ task.time_runtime }}</td>
+                    </tr>
+                  {% endfor %}
+                </table>
+              </div>
             </td>
           </tr>
         {% endfor %}

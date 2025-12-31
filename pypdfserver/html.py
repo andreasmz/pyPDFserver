@@ -87,7 +87,7 @@ class Webinterface:
     def format_datetime_ago(cls, dt: datetime|None) -> str:
         if dt is None:
             return ""
-        return cls.format_timespan(datetime.now() - dt) + "ago"
+        return cls.format_timespan(datetime.now() - dt) + " ago"
         
     @classmethod
     def format_timespan(cls, delta: timedelta|None) -> str:
@@ -99,11 +99,11 @@ class Webinterface:
         minutes = (seconds % 3600) // 60 
         seconds = seconds % 60
         if days > 0:
-            return f"{days}:{hours}:{minutes};{seconds}"
+            return f"{days}:{hours:2}:{minutes:2};{seconds:2}"
         elif hours > 0:
-            return f"{hours}:{minutes}:{seconds}"
+            return f"{hours:2}:{minutes:2}:{seconds:2}"
         elif minutes > 0:
-            return f"{minutes}:{seconds}"
+            return f"{minutes:2}:{seconds:2}"
         else:
             return f"{seconds} s"
 
