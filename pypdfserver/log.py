@@ -44,18 +44,19 @@ logger.setLevel(logging.DEBUG)
 
 _formatter = logging.Formatter('[%(asctime)s %(levelname)s]: %(message)s')
 
-_stream_handler = StdOutLogger()
-_stream_handler.setFormatter(_formatter)
-_stream_handler.setLevel(logging.INFO)
-logger.addHandler(_stream_handler)
+stream_log_handler = StdOutLogger()
+stream_log_handler.setFormatter(_formatter)
+stream_log_handler.setLevel(logging.INFO)
+logger.addHandler(stream_log_handler)
+
+file_log_handler = None
 
 if config.getboolean("SETTINGS", "log_to_file", fallback=True):
-    _file_handler = RotatingFileHandler(log_dir / "pyPDFserver.logs", mode="a", maxBytes=(1024**2), backupCount=5)
-    _file_handler.setFormatter(_formatter)
-    _file_handler.setLevel(logging.DEBUG)
-    logger.addHandler(_file_handler)
+    file_log_handler = RotatingFileHandler(log_dir / "pyPDFserver.logs", mode="a", maxBytes=(1024**2), backupCount=5)
+    file_log_handler.setFormatter(_formatter)
+    file_log_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_log_handler)
     logger.info(f"Logging directory: {log_dir}")
-
 
 def log_exceptions_hook(exc_type: type[BaseException], exc_value: BaseException, exc_traceback: types.TracebackType | None = None) -> None:
     global logger
@@ -73,22 +74,22 @@ threading.excepthook = thread_exceptions_hook
 
 match _log_level := config.get("SETTINGS", "log_level", fallback="INFO").upper():
     case "DEBUG":
-        _stream_handler.setLevel(logging.DEBUG)
+        stream_log_handler.setLevel(logging.DEBUG)
     case "INFO":
-        _stream_handler.setLevel(logging.INFO)
+        stream_log_handler.setLevel(logging.INFO)
     case "WARNING":
-        _stream_handler.setLevel(logging.WARNING)
+        stream_log_handler.setLevel(logging.WARNING)
     case "ERROR":
-        _stream_handler.setLevel(logging.ERROR)
+        stream_log_handler.setLevel(logging.ERROR)
     case "CRITICAL":
-        _stream_handler.setLevel(logging.CRITICAL)
+        stream_log_handler.setLevel(logging.CRITICAL)
     case _:
-        logger.warning(f"Invalid value '{_log_level}' for log_level. Defaulting to {logging.getLevelName(_stream_handler.level)}")
+        logger.warning(f"Invalid value '{_log_level}' for log_level. Defaulting to {logging.getLevelName(stream_log_handler.level)}")
 
 
 def debug() -> None:
     """ Start debugging """
-    _stream_handler.setLevel(logging.DEBUG)
+    stream_log_handler.setLevel(logging.DEBUG)
     logger.info(f"Started debugging")
 
 if "-debug" in sys.argv:

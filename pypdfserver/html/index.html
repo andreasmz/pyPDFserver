@@ -33,7 +33,27 @@
         </tr>
       </thead>
       <tbody>
-        {{ Tasks }}
+        {% for task_group in task_groups %}
+          <tr class="job-row status-running" data-bs-toggle="collapse" data-bs-target="#{{task_group.uuid}}">
+            <td><i class="bi bi-chevron-down"></i></td>
+            <td>{{ task_group.uuid }}</td>
+            <td>{{ task_group.name }}</td>
+            <td><i class="bi {{ task_group.state_icon }}"></i> {{ task_group.state_name }}</td>
+          </tr>
+          <tr class="collapse" id="{{task_group.uuid}}">
+            <td colspan="4">
+              <table class="table subjob-table mb-0">
+                {% for task in task_group.tasks %}
+                  <tr>
+                    <td>{{ task.uuid }}</td>
+                    <td>{{ task.name }}</td>
+                    <td><i class="bi {{ task.state_icon }}"></i> {{ task.state_name }}</td>
+                  </tr>
+                {% endfor %}
+              </table>
+            </td>
+          </tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>

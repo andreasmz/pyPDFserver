@@ -14,11 +14,11 @@ from pathlib import Path
 from queue import Queue, Empty
 
 from .core import *
-from .log import _file_handler, _stream_handler
 
 ocrmypdf_logger = logging.getLogger("ocrmypdf")
-ocrmypdf_logger.addHandler(_stream_handler)
-ocrmypdf_logger.addHandler(_file_handler)
+ocrmypdf_logger.handlers.clear()
+ocrmypdf_logger.addHandler(stream_log_handler)
+ocrmypdf_logger.addHandler(file_log_handler)
 
 class TaskState(Enum):
     """ 

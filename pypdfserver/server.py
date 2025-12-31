@@ -1,5 +1,4 @@
 from .core import *
-from .log import _file_handler
 from .pdf_worker import Task, PDFTask, OCRTask, DuplexTask, UploadToFTPTask, Artifact, FileArtifact
 from . import pdf_worker
 
@@ -18,8 +17,7 @@ from threading import Thread
 from typing import cast, NamedTuple
 
 pyftpdlib.log.config_logging(pyftpdlib.log.logging.WARNING)
-pyftpdlib.log.logger.addHandler(_file_handler)
-pyftpdlib.log
+pyftpdlib.log.logger.addHandler(file_log_handler)
 
 class PDFAuthorizer(DummyAuthorizer):
     """ Extend the Dummy Authorizer class with hashed password storage """
