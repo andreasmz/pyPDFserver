@@ -95,13 +95,6 @@ host =
 port = 
 username = 
 password = 
-# If pyPDFserver is running behind a NAT (e.g. in a Docker container), you may
-# want to define the source port (the ports used to open connections to the
-# external FTP server) and allow them in your firewall settings.
-source_port = 23000
-# If you define a source port, you can also define a source ip. By default,
-# the local_ip value in the FTP section is used
-source_ip = 
 
 [WEBINTERFACE]
 # If set to True, start a simple web interface to display currently scheduled,

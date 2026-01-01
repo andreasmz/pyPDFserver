@@ -308,7 +308,6 @@ class UploadToFTPTask(Task):
                  username: str, password: str, 
                  folder: str, 
                  tls: bool,
-                 source_address: tuple[str, int]|None = None,
                  group: str|None = None, 
                  hidden: bool = False) -> None:
         super().__init__(group=group, hidden=hidden)
@@ -319,7 +318,6 @@ class UploadToFTPTask(Task):
         self.password = password
         self.folder = folder
         self.tls = tls
-        self.source_address = source_address
 
         logger.debug(f"Created UploadToFTPTask '{str(self)}'")
 
@@ -329,7 +327,7 @@ class UploadToFTPTask(Task):
         else:
             ftp = ftplib.FTP()
         try:
-            ftp.connect(self.address[0], self.address[1], timeout=30, source_address=self.source_address)
+            ftp.connect(self.address[0], self.address[1], timeout=30)
             if isinstance(ftp, ftplib.FTP_TLS):
                 ftp.auth()
                 ftp.prot_p()
