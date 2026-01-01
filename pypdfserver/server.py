@@ -81,7 +81,7 @@ class PDF_FTPHandler(FTPHandler):
             tasks: list[Task] = []
             group = str(uuid.uuid4())
 
-            wait_for_file1_task = WaitForFileTask(display_name="Receive duplex front pages", display_desc="", hidden=True, group=group)
+            wait_for_file1_task = WaitForFileTask(display_name="Receive duplex front pages", display_desc="", hidden=False, group=group)
             wait_for_file1_task.file_artifact = artifact
             wait_for_file1_task.set_group_name(file_name)
             tasks.append(wait_for_file1_task)
@@ -134,8 +134,7 @@ class PDF_FTPHandler(FTPHandler):
 
             source_address = None
             if (source_port := PDF_FTPHandler.server.export_config.source_port) is not None:
-                source_ip = PDF_FTPHandler.server.export_config.source_ip if PDF_FTPHandler.server.export_config.source_ip is not None else PDF_FTPHandler.server.local_ip
-                source_address = (source_ip, source_port) 
+                source_address = (PDF_FTPHandler.server.export_config.source_ip, source_port) 
 
             upload_task = UploadToFTPTask(duplex_task.export_artifact_link, 
                 file_name="",
@@ -231,8 +230,7 @@ class PDF_FTPHandler(FTPHandler):
 
             source_address = None
             if (source_port := PDF_FTPHandler.server.export_config.source_port) is not None:
-                source_ip = PDF_FTPHandler.server.export_config.source_ip if PDF_FTPHandler.server.export_config.source_ip is not None else PDF_FTPHandler.server.local_ip
-                source_address = (source_ip, source_port) 
+                source_address = (PDF_FTPHandler.server.export_config.source_ip, source_port) 
 
             upload_task = UploadToFTPTask(pdf_task.export_artifact_link, 
                 file_name,
@@ -453,6 +451,7 @@ class PDF_FTPServer:
         self.thread.start()
 
         logger.info(f"pyPDFserver started on {self.host}:{self.port} (listening on {self.local_ip}) with {len(self.profiles)} profiles loaded")
+        logger.debug(f"FTP server running in thread {self.thread.ident}")
 
     def _loop(self) -> None:
         self.server.serve_forever(handle_exit=True)
@@ -486,9 +485,7 @@ class ExportFTP:
         if self.source_port <= 0 or self.source_port >= 2**16:
             self.source_port = None
 
-        self.source_ip = config.get("EXPORT_FTP_SERVER", "source_ip", fallback="")
-        if self.source_ip.strip() == "":
-            self.source_ip = None
+        self.source_ip = config.get("EXPORT_FTP_SERVER", "source_ip", fallback="").strip()
 
         username = config.get("EXPORT_FTP_SERVER", "username", fallback=None)
         if username is None:

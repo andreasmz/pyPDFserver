@@ -203,6 +203,7 @@ class Task:
             logger.debug(f"'{str(self)}': Trying to release a not existing external dependency")
             return
         self.external_dependencies.remove(name)
+        self.schedule()
 
     def clean_up(self) -> None:
         """ Clean up the artifacts and release their resources """
@@ -213,6 +214,8 @@ class Task:
         self.artifacts = {}
 
     def schedule(self) -> None:
+        if self.state not in [TaskState.CREATED, TaskState.SCHEDULED, TaskState.WAITING]:
+            return
         self.state = TaskState.SCHEDULED
         task_queue.put(self)
 
@@ -562,6 +565,8 @@ task_priority_queue: Queue[Task] = Queue()
 current_task: Task|None = None
 
 def _pdfworker_handler() -> None:
+    global worker_thread
+    logger.debug(f"Started the pdf server (thread {worker_thread.native_id})")
     try:
         _pdfworker_loop()
     except Exception as ex:
@@ -611,7 +616,6 @@ def clean() -> None:
 def _pdfworker_loop() -> None:
     """ Implements the main thread loop """
     global current_task
-    logger.debug(f"Started the pdf server")
     while True:
         current_task = None
 

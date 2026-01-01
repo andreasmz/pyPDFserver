@@ -10,8 +10,7 @@ from logging.handlers import RotatingFileHandler
 
 from .settings import config
 
-class StdOutLogger(logging.Handler):
-    """ Implements prompttoolkit logging """
+class ColorFormatter(logging.Formatter):
 
     COLORS = {
         logging.DEBUG: "\x1b[38;5;244m",
@@ -23,29 +22,56 @@ class StdOutLogger(logging.Handler):
 
     RESET_COLOR = "\x1b[0m"
 
+    def format(self, record: logging.LogRecord) -> str:
+        global use_colors
+        msg = super().format(record)
+        if use_colors:
+            color = self.COLORS.get(record.levelno, "")
+            return f"{color}{msg}{self.__class__.RESET_COLOR}"
+        return msg
+
+class StdOutLogger(logging.Handler):
+    """ Implements prompttoolkit logging """
+
     def __init__(self, level: int | str = 0) -> types.NoneType:
         try:
             self.use_colors = config.getboolean("SETTINGS", "log_colors")
         except ValueError:
             self.use_colors = False
+
+        try:
+            self.interactive_shell = config.getboolean("SETTINGS", "interactive_shell")
+        except ValueError:
+            self.interactive_shell = False
+        
         return super().__init__(level)
 
-    def emit(self, record: logging.LogRecord) -> types.NoneType:
-        color = self.COLORS.get(record.levelno, "")
-        msg = self.format(record)
-        if self.use_colors:
-            msg = f"{color}{msg}{self.__class__.RESET_COLOR}"
-        prompt_toolkit.print_formatted_text(prompt_toolkit.formatted_text.ANSI(msg))
+    def emit(self, record: logging.LogRecord) -> None:
+        if self.interactive_shell:
+            prompt_toolkit.print_formatted_text(prompt_toolkit.formatted_text.ANSI(self.format(record)))
+            return
+        return super().emit(record)
 
 log_dir = platformdirs.user_log_path(appname="pyPDFserver", appauthor=False, ensure_exists=True)
 
 logger = logging.getLogger("pyPDFserver")
 logger.setLevel(logging.DEBUG)
 
-_formatter = logging.Formatter('[%(asctime)s %(levelname)s]: %(message)s')
+_file_formatter = logging.Formatter('[%(asctime)s %(levelname)s]: %(message)s')
+_stream_formatter = ColorFormatter('[%(asctime)s %(levelname)s]: %(message)s')
 
-stream_log_handler = StdOutLogger()
-stream_log_handler.setFormatter(_formatter)
+try:
+    use_colors = config.getboolean("SETTINGS", "log_colors")
+except ValueError:
+    use_colors = False
+
+try:
+    interactive_shell = config.getboolean("SETTINGS", "interactive_shell")
+except ValueError:
+    interactive_shell = False
+
+stream_log_handler = StdOutLogger() if interactive_shell else logging.StreamHandler()
+stream_log_handler.setFormatter(_stream_formatter)
 stream_log_handler.setLevel(logging.INFO)
 logger.addHandler(stream_log_handler)
 
@@ -53,7 +79,7 @@ file_log_handler = None
 
 if config.getboolean("SETTINGS", "log_to_file", fallback=True):
     file_log_handler = RotatingFileHandler(log_dir / "pyPDFserver.logs", mode="a", maxBytes=(1024**2), backupCount=5)
-    file_log_handler.setFormatter(_formatter)
+    file_log_handler.setFormatter(_file_formatter)
     file_log_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_log_handler)
     logger.info(f"Logging directory: {log_dir}")

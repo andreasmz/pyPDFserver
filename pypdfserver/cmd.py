@@ -14,10 +14,15 @@ class PromptShell:
     def __init__(self, interactive: bool):
         from . import __version__, pdf_server
         self.commands = self._collect_commands()
-        self.session = PromptSession("> ",
-            completer=WordCompleter(list(self.commands.keys()), ignore_case=True),
-            output=None if interactive else DummyOutput()
-        )
+
+        self.interactive = interactive
+
+        if interactive:
+            self.session = PromptSession("> ",
+                completer=WordCompleter(list(self.commands.keys()), ignore_case=True),
+                output=None if interactive else DummyOutput()
+            )
+
 
     def _collect_commands(self) -> dict[str, Callable]:
         """ Collect all cmd_ functions and register the commands """
@@ -31,7 +36,10 @@ class PromptShell:
         from . import pdf_server
         try:
             while True:
-                input_str: str = self.session.prompt()
+                if self.interactive:
+                    input_str: str = self.session.prompt()
+                else:
+                    input_str = input("")
 
                 if not input_str.strip():
                     continue

@@ -45,6 +45,7 @@ class Webinterface:
         self.thread.start()
 
     def _run(self) -> None:
+        logger.debug(f"Started flask server (thread {self.thread.ident})")
         app.run(host="0.0.0.0", port=self.port, debug=False, use_reloader=False)
 
     @app.route("/")
