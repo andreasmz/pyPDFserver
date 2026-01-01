@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from queue import Queue, Empty
+from typing import cast
 
 from .core import *
 
@@ -45,7 +46,6 @@ class TaskState(Enum):
             raise ValueError(f"Can't merge zeros TaskStates")
         return max(states, key=lambda s: s.priority)
 
-
 class Artifact:
     """ 
     Implements an artifact class to pass results between tasks. Any subclass should implement garbage collection in the cleanup() method called when the 
@@ -56,9 +56,18 @@ class Artifact:
 
     def __init__(self, task: "Task|None", name: str, _log: bool = True) -> None:
         self.task = task
-        self.name = name
+        self._name = name
         if _log:
             logger.debug(f"Created artifact '{name}'" + (f" for task '{str(task)}'" if task is not None else ""))
+
+    @property
+    def name(self) -> str:
+        return self._name
+    
+    @name.setter
+    def name(self, val: str) -> None:
+        logger.debug(f"Renamed artifact '{self._name}' to '{val}'")
+        self._name = val
 
     def cleanup(self) -> None:
         """ Clean up the resources of the artifact """
@@ -121,6 +130,27 @@ class FileArtifact(Artifact):
         else:
             logger.debug(f"Garbage collected temporary artifact '{name}'" + (f" of task '{task_name}'" if task_name is not None else ""))
 
+
+class ArtifactLink:
+
+    def __init__(self, artifact_name: str, task: "Task") -> None:
+        self.artifact_name = artifact_name
+        self.task = task
+    
+    def get(self) -> "Artifact":
+        return self.task.artifacts[self.artifact_name]
+    
+    def __str__(self) -> str:
+        return f"Link to '{str(self.get())}'"
+    
+    def __repr__(self) -> str:
+        return f"<{str(self)}>"
+
+class FileArtifactLink(ArtifactLink):
+
+    def get(self) -> FileArtifact:
+        return cast(FileArtifact, super().get())
+
 class Task:
     """ A task can define any workload scheduled to run asynchronously in the run() method. To pass results to other tasks, use the store_artifacts() method """
     
@@ -131,6 +161,7 @@ class Task:
         self.state = TaskState.CREATED
         self.uuid = str(uuid.uuid4())
         self.dependencies: list[Task] = []
+        self.external_dependencies: set[str] = set()
         self.t_created: datetime = datetime.now()
         self.t_start: datetime|None = None
         self.t_end: datetime|None = None
@@ -145,11 +176,11 @@ class Task:
         if self.group is not None:
             Task.groups[self.group] = name
 
-    def run(self):
+    def run(self) -> None:
         """ Called when a Task is executed """
         raise NotImplementedError(f"The given task does not implement a run() method")
     
-    def try_abort(self):
+    def try_abort(self) -> None:
         if self.state in [TaskState.CREATED, TaskState.SCHEDULED, TaskState.WAITING]:
             self.state = TaskState.ABORTED
             logger.info(f"Aborted task '{str(self)}'")
@@ -158,6 +189,21 @@ class Task:
         else:
             logger.debug(f"Task '{str(self)}' has finished and can not be aborted")
     
+    def add_external_dependency(self, name: str) -> None:
+        """ Call this function """
+        if self.state in [TaskState.CREATED, TaskState.SCHEDULED, TaskState.WAITING]:
+            self.external_dependencies.add(name)
+        elif self.state == TaskState.RUNNING:
+            logger.debug(f"Can not add external dependency '{name}' to task '{str(self)}' as the task is already running")
+        else:
+            logger.debug(f"Can not add external dependency '{name}' to task '{str(self)}' as the task has already finished")
+
+    def release_external_dependency(self, name: str) -> None:
+        if name not in self.external_dependencies:
+            logger.debug(f"'{str(self)}': Trying to release a not existing external dependency")
+            return
+        self.external_dependencies.remove(name)
+
     def clean_up(self) -> None:
         """ Clean up the artifacts and release their resources """
         logger.debug(f"Cleaning up task '{str(self)}'")
@@ -206,13 +252,54 @@ class TaskException(Exception):
         super().__init__(*args)
         self.message = message
 
+class WaitForFileTask(Task):
+    """
+    Wait for a file before proceding
+    """
+
+    def __init__(self, 
+                 display_name: str,
+                 display_desc: str,
+                 group: str | None = None, 
+                 group_name: str | None = None, 
+                 hidden: bool = False) -> None:
+        super().__init__(group, group_name, hidden)
+        self.display_name = display_name
+        self.display_desc = display_desc
+
+        self.register_artifact(FileArtifact(self, "file"))
+        self.file_artifact_link = FileArtifactLink("file", self)
+        logger.debug(f"Created WaitForFileTask '{str(self)}'")
+
+    @property
+    def file_artifact(self) -> FileArtifact:
+        return cast(FileArtifact, self.artifacts["file"])
+    
+    @file_artifact.setter
+    def file_artifact(self, val: FileArtifact) -> None:
+        self.artifacts["file"] = val
+    
+    def run(self):
+        pass
+
+    def __str__(self) -> str:
+        return f"WaitForFileTask '{self.name}'"
+    
+    @property
+    def name(self) -> str:
+        return self.display_name
+    
+    @property
+    def desc(self) -> str:
+        return self.display_desc
+
 class UploadToFTPTask(Task):
     """
     Upload an file to an external FTP server
     """
 
     def __init__(self, 
-                 input: Path|FileArtifact, 
+                 input: Path|FileArtifactLink, 
                  file_name: str,
                  address: tuple[str, int], 
                  username: str, password: str, 
@@ -251,7 +338,7 @@ class UploadToFTPTask(Task):
             if self.file_name in files:
                 raise TaskException(f"File already present on the server")
             
-            path = self.input.path if isinstance(self.input, FileArtifact) else self.input
+            path = self.input.get().path if isinstance(self.input, FileArtifactLink) else self.input
             if not path.exists():
                 raise TaskException(f"Missing input file '{self.input}'")
             
@@ -279,19 +366,24 @@ class UploadToFTPTask(Task):
 class PDFTask(Task):
     """ Process a given PDF file """
 
-    def __init__(self, input: Path|FileArtifact, file_name: str, group: str|None = None, hidden: bool = False) -> None:
+    def __init__(self, input: Path|FileArtifactLink, file_name: str, group: str|None = None, hidden: bool = False) -> None:
         super().__init__(group=group, hidden=hidden)
         self.input = input
         self.file_name = file_name
         self.num_pages: int|None = None
 
-        self.export_artifact = FileArtifact(self, "export")
-        self.register_artifact(self.export_artifact)
+        self.register_artifact(FileArtifact(self, "export"))
+        self.export_artifact_link = FileArtifactLink("export", self)
 
         logger.debug(f"Created PDFTask '{str(self)}'")
 
+    @property
+    def export_artifact(self) -> FileArtifact:
+        return cast(FileArtifact, self.artifacts["export"])
+
+
     def run(self) -> None:
-        path = self.input.path if isinstance(self.input, FileArtifact) else self.input
+        path = self.input.get().path if isinstance(self.input, FileArtifactLink) else self.input
         if not path.exists():
             raise TaskException(f"Missing input file '{self.input}'")
 
@@ -322,7 +414,7 @@ class PDFTask(Task):
 
 class OCRTask(Task):
 
-    def __init__(self, input: Path|FileArtifact, 
+    def __init__(self, input: Path|FileArtifactLink, 
                  file_name: str, 
                  language: str, 
                  optimize: int, 
@@ -342,13 +434,16 @@ class OCRTask(Task):
         self.num_jobs = num_jobs
         self.tesseract_timeout = tesseract_timeout
 
-        self.export_artifact = FileArtifact(self, "export")
-        self.register_artifact(self.export_artifact)
-
+        self.register_artifact(FileArtifact(self, "export"))
+        self.export_artifact_link = FileArtifactLink("export", self)
         logger.debug(f"Created OCRTask '{str(self)}'")
 
+    @property
+    def export_artifact(self) -> FileArtifact:
+        return cast(FileArtifact, self.artifacts["export"])
+
     def run(self) -> None:
-        path = self.input.path if isinstance(self.input, FileArtifact) else self.input
+        path = self.input.get().path if isinstance(self.input, FileArtifactLink) else self.input
         if not path.exists():
             raise TaskException(f"Missing input file '{self.input}'")
 
@@ -391,8 +486,8 @@ class OCRTask(Task):
 class DuplexTask(Task):
 
     def __init__(self, 
-                 input1: Path|FileArtifact, 
-                 input2: Path|FileArtifact, 
+                 input1: Path|FileArtifactLink, 
+                 input2: Path|FileArtifactLink, 
                  file1_name: str, 
                  file2_name: str, 
                  export_name: str,
@@ -405,17 +500,21 @@ class DuplexTask(Task):
         self.file2_name = file2_name
         self.export_name = export_name
 
-        self.export_artifact = FileArtifact(self, "export")
-        self.register_artifact(self.export_artifact)
+        self.register_artifact(FileArtifact(self, "export"))
+        self.export_artifact_link = FileArtifactLink("export", self)
 
         logger.debug(f"Created DuplexTask '{str(self)}'")
 
+    @property
+    def export_artifact(self) -> FileArtifact:
+        return cast(FileArtifact, self.artifacts["export"])
+
     def run(self):
-        path1 = self.input1.path if isinstance(self.input1, FileArtifact) else self.input1
+        path1 = self.input1.get().path if isinstance(self.input1, FileArtifactLink) else self.input1
         if not path1.exists():
             raise TaskException(f"Missing input file '{self.input1}'")
         
-        path2 = self.input2.path if isinstance(self.input2, FileArtifact) else self.input2
+        path2 = self.input2.get().path if isinstance(self.input2, FileArtifactLink) else self.input2
         if not path2.exists():
             raise TaskException(f"Missing input file '{self.input2}'")
 
@@ -490,6 +589,8 @@ def clean() -> None:
             continue
 
         task_ready = True
+        if len(t.external_dependencies) > 0:
+            task_ready = False
         for d in t.dependencies:
             match d.state:
                 case TaskState.CREATED | TaskState.SCHEDULED | TaskState.WAITING | TaskState.RUNNING:
@@ -539,6 +640,8 @@ def _pdfworker_loop() -> None:
 
         # Check if all dependencies for the task are resolved
         dependencies_resolved = True
+        if len(current_task.external_dependencies) > 0:
+            dependencies_resolved = False
         for d in current_task.dependencies:
             match d.state:
                 case TaskState.FINISHED:

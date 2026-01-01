@@ -1,5 +1,5 @@
 from .core import *
-from .pdf_worker import Task, PDFTask, OCRTask, DuplexTask, UploadToFTPTask, Artifact, FileArtifact
+from .pdf_worker import Task, WaitForFileTask, PDFTask, OCRTask, DuplexTask, UploadToFTPTask, Artifact, FileArtifact
 from . import pdf_worker
 
 import hashlib
@@ -74,58 +74,26 @@ class PDF_FTPHandler(FTPHandler):
         if (r := profile.duplex1_regex.match(file_name)) is not None:
             logger.info(f"Received duplex front pages '{file_name}' by user '{self.username}'")
             if profile.duplex_pdf_cache is not None:
-                logger.info(f"Discarding previous duplex pront pages '{profile.duplex_pdf_cache[2]}'")
-                cast(Task, profile.duplex_pdf_cache.task).try_abort()
-
-            group = str(uuid.uuid4())
-            tasks: list[Task] = [Task(hidden=True, group=group)]
-            tasks[0].artifacts["export"] = artifact
-            tasks[0].set_group_name(f"{file_name}")
-            
-            if profile.ocr_enabled:
-                tasks.append(OCRTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
-                                     file_name=file_name, 
-                                     language=profile.ocr_language, 
-                                     optimize=profile.ocr_optimize, 
-                                     deskew=profile.ocr_deskew, 
-                                     rotate_pages=profile.ocr_rotate_pages,
-                                     num_jobs=1,
-                                     tesseract_timeout=profile.ocr_tesseract_timeout,
-                                     group=group
-                                     ))
-            for t in tasks[1:]:
-                t.schedule()
-
-            profile.duplex_pdf_cache = PDFProfile.CACHE_TUPLE(tasks[-1], datetime.now(), file_name, r)
-
-        elif (r := profile.duplex2_regex.match(file_name)):
-            
-            if profile.duplex_pdf_cache is None:
-                logger.info(f"Received duplex back pages '{file_name}', but discarded them as the pront pages are missing")
-                return
-            elif (d := (datetime.now() - cast(datetime, profile.duplex_pdf_cache.time))).total_seconds() > PDF_FTPHandler.server.duplex_timeout:
-                logger.info(f"Received duplex back pages '{file_name}', but discarded them due to timeout (first file received {d.total_seconds()} ago)")
+                logger.info(f"Discarding previous duplex pront pages '{profile.duplex_pdf_cache.file1_name}'")
+                profile.duplex_pdf_cache.wait_for_file2_task.try_abort()
                 profile.duplex_pdf_cache = None
-                return
-            
-            logger.info(f"Received duplex back pages '{file_name}' by user '{self.username}'")
 
+            tasks: list[Task] = []
+            group = str(uuid.uuid4())
 
-            export_name = profile.export_duplex_template
-            export_name = export_name.replace("(lang)", profile.ocr_language)
-            if "s" in cast(re.Match, profile.duplex_pdf_cache.file1_regex).groupdict():
-                export_name = export_name.replace("(*)", cast(re.Match, profile.duplex_pdf_cache.file1_regex).group("s"))
-                export_name = export_name.replace("(*1)", cast(re.Match, profile.duplex_pdf_cache.file1_regex).group("s"))
-            if "s" in r.groupdict():
-                export_name = export_name.replace("(*2)", r.group("s"))
+            wait_for_file1_task = WaitForFileTask(display_name="Receive duplex front pages", display_desc="", hidden=True, group=group)
+            wait_for_file1_task.file_artifact = artifact
+            wait_for_file1_task.set_group_name(file_name)
+            tasks.append(wait_for_file1_task)
+
+            wait_for_file2_task = WaitForFileTask(display_name="Receive duplex back pages", display_desc="Waiting for user upload", hidden=False, group=group)
+            wait_for_file2_task.add_external_dependency("duplex2_upload")
+            tasks.append(wait_for_file2_task)
             
-            group = cast(Task, profile.duplex_pdf_cache.task).group
-            tasks: list[Task] = [Task(hidden=True, group=group)]
-            tasks[0].artifacts["export"] = artifact
-            tasks[0].set_group_name(f"'{profile.duplex_pdf_cache.file1_name}' + '{file_name}' -> {export_name}")
+            ocr_duplex1_task, ocr_duplex2_task = None, None
 
             if profile.ocr_enabled:
-                tasks.append(OCRTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
+                ocr_duplex1_task = OCRTask(wait_for_file1_task.file_artifact_link, 
                                      file_name=file_name, 
                                      language=profile.ocr_language, 
                                      optimize=profile.ocr_optimize, 
@@ -134,19 +102,38 @@ class PDF_FTPHandler(FTPHandler):
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
-                                     ))
-            tasks.append(DuplexTask(
-                cast(FileArtifact, cast(Task, profile.duplex_pdf_cache.task).artifacts["export"]),
-                cast(FileArtifact, tasks[-1].artifacts["export"]),
-                file1_name=profile.duplex_pdf_cache.file1_name,
-                file2_name=file_name,
-                export_name=export_name,
+                                     )
+                
+                ocr_duplex2_task = OCRTask(wait_for_file2_task.file_artifact_link, 
+                                     file_name="", 
+                                     language=profile.ocr_language, 
+                                     optimize=profile.ocr_optimize, 
+                                     deskew=profile.ocr_deskew, 
+                                     rotate_pages=profile.ocr_rotate_pages,
+                                     num_jobs=1,
+                                     tesseract_timeout=profile.ocr_tesseract_timeout,
+                                     group=group
+                                     )
+                
+                ocr_duplex1_task.dependencies.append(wait_for_file1_task)
+                ocr_duplex2_task.dependencies.append(wait_for_file2_task)
+                tasks.append(ocr_duplex1_task)
+                tasks.append(ocr_duplex2_task)
+                
+            duplex_task = DuplexTask(
+                wait_for_file1_task.file_artifact_link if ocr_duplex1_task is None else ocr_duplex1_task.export_artifact_link,
+                wait_for_file2_task.file_artifact_link if ocr_duplex2_task is None else ocr_duplex2_task.export_artifact_link,
+                file1_name=file_name,
+                file2_name="",
+                export_name="",
                 group=group
-            ))
-            if type(profile.duplex_pdf_cache.task) != Task: # Add file 1 dependency only if not dummy artifact Task
-                tasks[-1].dependencies.append(profile.duplex_pdf_cache.task)
-            tasks.append(UploadToFTPTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
-                file_name=export_name,
+            )
+            duplex_task.dependencies.append(wait_for_file1_task if ocr_duplex1_task is None else ocr_duplex1_task)
+            duplex_task.dependencies.append(wait_for_file2_task if ocr_duplex2_task is None else ocr_duplex2_task)
+            tasks.append(duplex_task)
+
+            upload_task = UploadToFTPTask(duplex_task.export_artifact_link, 
+                file_name="",
                 address=(PDF_FTPHandler.server.export_config.host, PDF_FTPHandler.server.export_config.port),
                 username=PDF_FTPHandler.server.export_config.username,
                 password=PDF_FTPHandler.server.export_config.password,
@@ -154,11 +141,53 @@ class PDF_FTPHandler(FTPHandler):
                 tls=True,
                 group=group,
                 source_address=((PDF_FTPHandler.server.local_ip, PDF_FTPHandler.server.export_config.control_port) if PDF_FTPHandler.server.export_config.control_port is not None else None)
-            ))
-            for t1, t2 in zip(tasks[1:], tasks[2:]):
-                t2.dependencies.append(t1)
-            for t in tasks[1:]:
+            )
+            upload_task.dependencies.append(duplex_task)
+            tasks.append(upload_task)
+        
+            for t in tasks:
                 t.schedule()
+
+            profile.duplex_pdf_cache = PDFProfile.DuplexCache(wait_for_file2_task=wait_for_file2_task,
+                                                              ocr_duplex2_task=ocr_duplex2_task, 
+                                                              duplex_task=duplex_task, 
+                                                              upload_task=upload_task,
+                                                              time=datetime.now(),
+                                                              file1_name=file_name,
+                                                              file1_regex=r
+                                                              )
+
+        elif (r := profile.duplex2_regex.match(file_name)):
+            
+            if profile.duplex_pdf_cache is None:
+                logger.info(f"Received duplex back pages '{file_name}', but discarded them as the pront pages are missing")
+                return
+            elif (d := (datetime.now() - profile.duplex_pdf_cache.time)).total_seconds() > PDF_FTPHandler.server.duplex_timeout:
+                logger.info(f"Received duplex back pages '{file_name}', but discarded them due to timeout (first file received {d.total_seconds()} ago)")
+                profile.duplex_pdf_cache.wait_for_file2_task.try_abort()
+                profile.duplex_pdf_cache = None
+                return
+            
+            logger.info(f"Received duplex back pages '{file_name}' by user '{self.username}'")
+
+            export_name = profile.export_duplex_template
+            export_name = export_name.replace("(lang)", profile.ocr_language)
+            if "s" in profile.duplex_pdf_cache.file1_regex.groupdict():
+                export_name = export_name.replace("(*)", profile.duplex_pdf_cache.file1_regex.group("s"))
+                export_name = export_name.replace("(*1)", profile.duplex_pdf_cache.file1_regex.group("s"))
+            if "s" in r.groupdict():
+                export_name = export_name.replace("(*2)", r.group("s"))
+
+            # Update names in the tasks
+            profile.duplex_pdf_cache.duplex_task.set_group_name(f"'{profile.duplex_pdf_cache.file1_name}' + '{file_name}' -> {export_name}")
+            if profile.duplex_pdf_cache.ocr_duplex2_task is not None:
+                profile.duplex_pdf_cache.ocr_duplex2_task.file_name = file_name
+            profile.duplex_pdf_cache.duplex_task.file2_name = file_name
+            profile.duplex_pdf_cache.duplex_task.export_name = export_name
+            profile.duplex_pdf_cache.upload_task.file_name = export_name
+
+            profile.duplex_pdf_cache.wait_for_file2_task.file_artifact = artifact
+            profile.duplex_pdf_cache.wait_for_file2_task.release_external_dependency("duplex2_upload")
 
             profile.duplex_pdf_cache = None
             
@@ -169,12 +198,17 @@ class PDF_FTPHandler(FTPHandler):
             export_name = export_name.replace("(lang)", profile.ocr_language)
             export_name = export_name.replace("(*)", r.group("s"))
 
+            tasks: list[Task] = []
             group = str(uuid.uuid4())
-            tasks: list[Task] = [Task(hidden=True, group=group)]
-            tasks[0].artifacts["export"] = artifact
-            tasks[0].set_group_name(file_name)
+
+            wait_for_file_task = WaitForFileTask(display_name="Receive user upload", display_desc="", hidden=True, group=group)
+            wait_for_file_task.file_artifact = artifact
+            wait_for_file_task.set_group_name(file_name)
+            tasks.append(wait_for_file_task)
+
+            ocr_task = None
             if profile.ocr_enabled:
-                tasks.append(OCRTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
+                ocr_task = OCRTask(wait_for_file_task.file_artifact_link, 
                                      file_name=file_name, 
                                      language=profile.ocr_language, 
                                      optimize=profile.ocr_optimize, 
@@ -183,9 +217,14 @@ class PDF_FTPHandler(FTPHandler):
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
-                                     ))
-            tasks.append(PDFTask(cast(FileArtifact, tasks[-1].artifacts["export"]), file_name, group=group))
-            tasks.append(UploadToFTPTask(cast(FileArtifact, tasks[-1].artifacts["export"]), 
+                                     )
+                ocr_task.dependencies.append(wait_for_file_task)
+                tasks.append(ocr_task)
+            pdf_task = PDFTask(wait_for_file_task.file_artifact_link if ocr_task is None else ocr_task.export_artifact_link, file_name=file_name, group=group)
+            pdf_task.dependencies.append(wait_for_file_task if ocr_task is None else ocr_task)
+            tasks.append(pdf_task)
+
+            upload_task = UploadToFTPTask(pdf_task.export_artifact_link, 
                 file_name,
                 address=(PDF_FTPHandler.server.export_config.host, PDF_FTPHandler.server.export_config.port),
                 username=PDF_FTPHandler.server.export_config.username,
@@ -194,10 +233,11 @@ class PDF_FTPHandler(FTPHandler):
                 tls=True,
                 group=group,
                 source_address=((PDF_FTPHandler.server.local_ip, PDF_FTPHandler.server.export_config.control_port) if PDF_FTPHandler.server.export_config.control_port is not None else None)
-            ))
-            for t1, t2 in zip(tasks[1:], tasks[2:]):
-                t2.dependencies.append(t1)
-            for t in tasks[1:]:
+            )
+            upload_task.dependencies.append(pdf_task)
+            tasks.append(upload_task)
+
+            for t in tasks:
                 t.schedule()
         else:
             logger.info(f"Discarded file '{file_name}' not matching any rules")
@@ -208,7 +248,15 @@ class PDFProfile:
         "(lang)": r"(?P<lang>[a-zA-Z]+)",
         "(*)": r"(?P<s>.*)",
     }
-    CACHE_TUPLE = NamedTuple("DuplexCache", task=Task, time=datetime, file1_name=str, file1_regex=re.Match)
+
+    class DuplexCache(NamedTuple):
+        duplex_task: DuplexTask
+        wait_for_file2_task: WaitForFileTask
+        ocr_duplex2_task: OCRTask|None
+        upload_task: UploadToFTPTask
+        time: datetime
+        file1_name: str
+        file1_regex: re.Match
 
     def __init__(self, name: str) -> None:
         self.name = name
@@ -310,7 +358,7 @@ class PDFProfile:
             raise ConfigError(f"Missing field 'export_path' in profile '{self.name}'")
         self.export_path = export_path
 
-        self.duplex_pdf_cache: None|PDFProfile.CACHE_TUPLE = None
+        self.duplex_pdf_cache: None|PDFProfile.DuplexCache = None
 
 
 class PDF_FTPServer:
