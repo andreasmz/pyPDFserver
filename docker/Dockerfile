@@ -5,6 +5,10 @@ FROM python:3.13-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ocrmypdf \
+        ghostscript \
+        jbig2dec \
+        pngquant \
+        unpaper \
         tesseract-ocr \
         tesseract-ocr-osd \
         tesseract-ocr-eng \
