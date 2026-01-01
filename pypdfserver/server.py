@@ -132,6 +132,11 @@ class PDF_FTPHandler(FTPHandler):
             duplex_task.dependencies.append(wait_for_file2_task if ocr_duplex2_task is None else ocr_duplex2_task)
             tasks.append(duplex_task)
 
+            source_address = None
+            if (source_port := PDF_FTPHandler.server.export_config.source_port) is not None:
+                source_ip = PDF_FTPHandler.server.export_config.source_ip if PDF_FTPHandler.server.export_config.source_ip is not None else PDF_FTPHandler.server.local_ip
+                source_address = (source_ip, source_port) 
+
             upload_task = UploadToFTPTask(duplex_task.export_artifact_link, 
                 file_name="",
                 address=(PDF_FTPHandler.server.export_config.host, PDF_FTPHandler.server.export_config.port),
@@ -140,7 +145,7 @@ class PDF_FTPHandler(FTPHandler):
                 folder=profile.export_path,
                 tls=True,
                 group=group,
-                source_address=((PDF_FTPHandler.server.local_ip, PDF_FTPHandler.server.export_config.control_port) if PDF_FTPHandler.server.export_config.control_port is not None else None)
+                source_address=source_address
             )
             upload_task.dependencies.append(duplex_task)
             tasks.append(upload_task)
@@ -224,6 +229,11 @@ class PDF_FTPHandler(FTPHandler):
             pdf_task.dependencies.append(wait_for_file_task if ocr_task is None else ocr_task)
             tasks.append(pdf_task)
 
+            source_address = None
+            if (source_port := PDF_FTPHandler.server.export_config.source_port) is not None:
+                source_ip = PDF_FTPHandler.server.export_config.source_ip if PDF_FTPHandler.server.export_config.source_ip is not None else PDF_FTPHandler.server.local_ip
+                source_address = (source_ip, source_port) 
+
             upload_task = UploadToFTPTask(pdf_task.export_artifact_link, 
                 file_name,
                 address=(PDF_FTPHandler.server.export_config.host, PDF_FTPHandler.server.export_config.port),
@@ -232,7 +242,7 @@ class PDF_FTPHandler(FTPHandler):
                 folder=profile.export_path,
                 tls=True,
                 group=group,
-                source_address=((PDF_FTPHandler.server.local_ip, PDF_FTPHandler.server.export_config.control_port) if PDF_FTPHandler.server.export_config.control_port is not None else None)
+                source_address=source_address
             )
             upload_task.dependencies.append(pdf_task)
             tasks.append(upload_task)
@@ -470,11 +480,15 @@ class ExportFTP:
             self.port = 21
 
         try:
-            self.control_port = config.getint("EXPORT_FTP_SERVER", "control_port", fallback=-1)
+            self.source_port = config.getint("EXPORT_FTP_SERVER", "source_port", fallback=-1)
         except ValueError:
-            self.control_port = -1
-        if self.control_port <= 0 or self.control_port >= 2**16:
-            self.control_port = None
+            self.source_port = -1
+        if self.source_port <= 0 or self.source_port >= 2**16:
+            self.source_port = None
+
+        self.source_ip = config.get("EXPORT_FTP_SERVER", "source_ip", fallback="")
+        if self.source_ip.strip() == "":
+            self.source_ip = None
 
         username = config.get("EXPORT_FTP_SERVER", "username", fallback=None)
         if username is None:
