@@ -335,7 +335,7 @@ class UploadToFTPTask(Task):
                 ftp.prot_p()
             ftp.login(user=self.username, passwd=self.password)
             ftp.cwd(self.folder)
-            logger.debug(f"[UploadToFTPTask {self.uuid}] Connected to upload FTP server ('{ftp.getwelcome()}')")
+            logger.debug(f"Connected to upload FTP server ('{ftp.getwelcome()}')")
             files = ftp.nlst()
 
             if self.file_name in files:

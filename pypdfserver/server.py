@@ -407,10 +407,11 @@ class PDF_FTPServer:
             logger.info(f"No local_ip set. Defaulting to 127.0.0.1")
             self.local_ip = "127.0.0.1"
 
-        self.host = config.get("FTP", "public_ip", fallback="")
-        if self.host == "":
+        self.public_ip = config.get("FTP", "public_ip", fallback="")
+        if self.public_ip.strip() == "":
             logger.debug(f"No public ip set. Defaulting to the local_ip value '{self.local_ip}'")
-            self.host = self.local_ip
+            self.public_ip = self.local_ip
+        
 
         try:
             self.port = config.getint("FTP", "port", fallback=-1)
@@ -440,8 +441,8 @@ class PDF_FTPServer:
         handler.authorizer = authorizer
         handler.server = self
         handler.passive_ports = self.passive_ports # type: ignore
-        if self.local_ip != self.host:
-            handler.masquerade_address = self.host # type: ignore
+        if self.local_ip != self.public_ip:
+            handler.masquerade_address = self.public_ip # type: ignore
 
         self.server = FTPServer((self.local_ip, self.port), handler)
 
@@ -450,7 +451,7 @@ class PDF_FTPServer:
         self.thread = Thread(target=self._loop, name="PDF_FTPServer_main", daemon=True)
         self.thread.start()
 
-        logger.info(f"pyPDFserver started on {self.host}:{self.port} (listening on {self.local_ip}) with {len(self.profiles)} profiles loaded")
+        logger.info(f"pyPDFserver started on {self.public_ip}:{self.port} (listening on {self.local_ip}) with {len(self.profiles)} profiles loaded")
         logger.debug(f"FTP server running in thread {self.thread.ident}")
 
     def _loop(self) -> None:
