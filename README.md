@@ -1,59 +1,83 @@
 # pyPDFserver
 
-pyPDFserver provides a bridge FTP server accepting PDFs (for example from your network printer) and applies OCR, image optimization and/or merging to a duplex scan.
-The final PDF is uploaded to your target machine (e.g. you NAS) via FTP.
+![PyPI - Version](https://img.shields.io/pypi/v/pyPDFserver?style=for-the-badge&logo=pypi&link=https%3A%2F%2Fpypi.org%2Fproject%2FpyPDFServer%2F)
+![Docker Image Version](https://img.shields.io/docker/v/andreasmz/pypdfserver?style=for-the-badge&logo=Docker&label=Docker&link=https%3A%2F%2Fhub.docker.com%2Fr%2Fandreasmz%2Fpypdfserver)
+
+
+pyPDFserver provides a bridge FTP server that accepts PDFs (for example, from your network printer) and applies OCR, image optimization, and/or merging to duplex scans.
+The final PDF is uploaded to your target machine (e.g., your NAS) via FTP.
 
 ### Installation
 
-pyPDFserver is designed to run in a Docker container, but you can also host it manually. First, install Python (>= 3.10) and install pyPDFserver via pip
+pyPDFserver is designed to run in a Docker container, but you can also host it manually.
+
+1. Install Python (>= 3.10) and install pyPDFserver via pip:
 
 ```bash
 pip install pyPDFserver
 ```
 
-Then you need to install the external dependencies for ocrmypdf (e.g. tesseract, ghostscript) by following this manual: [https://ocrmypdf.readthedocs.io/en/latest/installation.html](https://ocrmypdf.readthedocs.io/en/latest/installation.html). You can then run pyPDFserver with
+2. Install the external dependencies for OCRmyPDF (e.g., Tesseract, Ghostscript) by following the manual: [https://ocrmypdf.readthedocs.io/en/latest/installation.html](https://ocrmypdf.readthedocs.io/en/latest/installation.html)
+
+3. Run pyPDFserver:
 
 ```bash
 python -m pyPDFserver
 ```
 
-After first run, two configruation files will be created in your systems configruation folder (refer to the console output to extract the exact paths) named `pyPDFserver.ini` and `profiles.ini`. You need to modify them with your settings and restart pyPDFserver.
+After the first run, two configuration files will be created in your system's configuration folder (refer to the console output to see the exact paths) named `pyPDFserver.ini` and `profiles.ini`. You need to modify them with your settings and restart pyPDFserver.
 
 ### Docker
 
-A docker image is available including the most popular languages.
+A Docker image is available, including some popular languages (English, French, Spanish, German, Italian, Portuguese, Dutch, Polish). It also includes `jbig2dec` and `pngquant` for OCRmyPDF optimization.  
+
+After pulling the image, adjust the following settings in your Docker container:
+
+- Map the settings folder to your machine. Depending on your OS, it may be located at:
+
+| Platform      | Default Config Path (platformdirs.site_config_dir) |
+|---------------|----------------------------------------------------|
+| Windows       | C:\ProgramData\pyPDFserver                       |
+| macOS         | /Library/Application Support/pyPDFserver         |
+| Linux         | /etc/xdg/pyPDFserver                              |
+
+- Create the `pyPDFserver.ini` and `profiles.ini` files in the config dir.  
+  - You can skip this step and run pyPDFserver first—it will crash due to missing settings but will create the files with default values.
+- Map the ports for FTP server (default 21) and web interface (default 80) to your desired ports. You can also change the default internal ports in the `pyPDFserver.ini`.
+- Map the ports for the passive FTP server (default 23000–23010) to the same ports. It's important to use the same ports locally and externally.
+- Set the entry point to `python -m pyPDFserver`
 
 ### Usage
 
-Now simply connect to your FTP server and upload files. After some time (OCR may take several minutes), they will be uploaded to your server.
+Connect to your FTP server and upload files. OCR processing may take several minutes. Processed files will be uploaded to your external server.  You can view the status of recent jobs via the web interface (default port 80).
 
 #### OCR
 
-pyPDFserver uses OCRmyPDF to apply OCR to your PDF. Simply set `ocr_enabled` to True in your profile to apply OCR to your files. Please note that you should define an language in the profile.ini to get the best OCR results.
+pyPDFserver uses OCRmyPDF to apply OCR to your PDFs. Enable OCR in your profile by setting `ocr_enabled = True`. Define the OCR language in `profiles.ini` for best results.
 
 #### Duplex scan
 
-pyPDFserver allows you to automatically merge two scans of the front and back pages (i.e. duplex 1 and duplex 2) into a single file. This is intended to be used with an Automatic Document Feeder (ADF). Keep the following in mind:
-- The uploaded files must match the `input_duplex1_name` and `input_duplex1_name` templates in your profile.ini
-- The back pages must have reversed order in the pdf file (as you simply turn them around for scanning)
-- The page count of both files must match or the task is rejected
+pyPDFserver can automatically merge front and back page scans (duplex 1 and duplex 2) into a single PDF, suitable for Automatic Document Feeders (ADF).  
+
+- Uploaded files must match the `input_duplex1_name` and `input_duplex2_name` templates in your profile.
+- Back pages must be reversed (you simply turn them around for scanning).
+- Page counts must match or the task will be rejected.
 
 #### Commands 
 
-At any time you can see your progress in the console by using
+**User Commands:**
 
-- **tasks list**: List all running and recently finished or failed tasks
+- `exit`: Terminate the server and clear temporary files.
+- `version`: Display the installed version.
+- `tasks abort`: Abort all scheduled tasks (currently running tasks cannot be aborted).
 
-Other useful commands are
+**Internal Commands (rarely needed):**
 
-- **exit**:  Terminate the server and clear temporary files
-- **version**: List the installed version
-
-Some internal commands you don't usually need to use:
-
-- **tasks force_clear**: Clear all scheduled and finished tasks (does not abort the current task)
-- **artifacts list**: Internal command to list all artifacts
-- **artifacts clean**: Remove some untracked artifacts to release some storage (usually not needed)
+- `tasks list`: List all running, finished, or failed tasks.
+- `tasks clean`: Clean old tasks and remove temporary files (automatically performed every 5 minutes).
+- `tasks clear`: Abort all scheduled tasks and clear finished tasks.
+- `artifacts list`: List all artifacts.
+- `artifacts clean`: Remove untracked artifacts to release storage.
 
 ### Configruation
 
@@ -75,6 +99,8 @@ duplex_timeout = 600
 # If set to True, pyPDFserver will search for old temporary files at startup
 # and delete them
 clean_old_temporary_files = True
+# Set a time limit in minutes to keep old tasks in cache before garbage collecting them
+tasks_keep_time = 180
 
 [FTP]
 local_ip = 127.0.0.1
@@ -178,6 +204,12 @@ ocr_language = deu
 username = pyPDFserver_en
 ocr_enabled = True
 ocr_language = eng
+
+# You can define multiple languages for OCR
+[DE_EN]
+username = pyPDFserver_de_en
+ocr_enabled = True
+ocr_language = deu+eng
 
 ```
 

@@ -572,10 +572,18 @@ def _pdfworker_handler() -> None:
         logger.critical(f"Terminating pyPDFserver")
         exit()
 
+try:
+    task_keep_time = config.getint("SETTINGS", "tasks_keep_time")
+except ValueError:
+    raise ConfigError(f"Missing or invalid value for 'task_keep_time' in section 'SETTINGS'")
+if task_keep_time <= 0:
+    raise ConfigError(f"Invalid value {task_keep_time} for 'task_keep_time' in section 'SETTINGS'")
+
+
 def clean() -> None:
     for t in Task.task_list.copy():
         # First remove old tasks
-        if (datetime.now() - t.t_created).total_seconds() > (60*60):
+        if (datetime.now() - t.t_created).total_seconds() > task_keep_time*60:
             Task.task_list.remove(t)
             t.clean_up()
             match t.state:

@@ -25,10 +25,6 @@ RUN git clone https://github.com/agl/jbig2enc.git \
  && make \
  && make install
 
-RUN ls -l /usr/local
-RUN ls -l /usr/local/lib
-RUN ls -l /usr/local/bin
-
 # Stage 2: Runtime image
 FROM python:3.13-slim
 
