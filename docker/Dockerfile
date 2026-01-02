@@ -1,11 +1,13 @@
 # pyPDFserver by Andreas Brilka 2026
 
 # Stage 1: Build jbig2enc
-FROM debian:bookworm-slim AS jbig2enc-builder
+FROM debian:stable-slim AS jbig2enc-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
-    build-essential \
+    make \
+    gcc \
+    g++ \
     autoconf \
     automake \
     libtool \
@@ -14,12 +16,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/agl/jbig2enc.git /src/jbig2enc \
- && cd /src/jbig2enc \
+WORKDIR /build
+
+RUN git clone https://github.com/agl/jbig2enc.git \
+ && cd jbig2enc \
  && ./autogen.sh \
  && ./configure \
- && make -j$(nproc) \
- && make install
+ && make
+
+RUN ls -l /build/jbig2enc
 
 # Stage 2: Runtime image
 FROM python:3.13-slim
@@ -45,7 +50,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the binaries of jbig2enc to this docker image
-COPY --from=jbig2enc-builder /usr/local/bin/jbig2enc /usr/local/bin/jbig2
+COPY --from=jbig2enc-builder /build/jbig2enc /usr/local/bin
 
 # Build python package
 COPY dist/python-package-distributions /tmp/dist
