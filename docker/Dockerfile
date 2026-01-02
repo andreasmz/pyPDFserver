@@ -20,6 +20,8 @@ RUN git clone https://github.com/agl/jbig2enc.git /src/jbig2enc \
  && ./configure \
  && make -j$(nproc)
 
+RUN ls -l /src/jbig2enc
+
 # Stage 2: Runtime image
 FROM python:3.13-slim
 
