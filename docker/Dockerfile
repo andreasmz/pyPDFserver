@@ -24,7 +24,7 @@ RUN git clone https://github.com/agl/jbig2enc.git \
  && ./configure \
  && make install
 
-RUN ls -l /zsr/bin
+RUN ls -l /usr/bin
 
 # Stage 2: Runtime image
 FROM python:3.13-slim
@@ -56,10 +56,6 @@ COPY --from=jbig2enc-builder /usr/bin/jbig2 /usr/local/bin/jbig2
 COPY dist/python-package-distributions /tmp/dist
 
 RUN pip install --no-cache-dir /tmp/dist/*.whl && rm -rf /tmp/dist
-
-# Optimization
-RUN strip /usr/local/bin/jbig2 || true && \
-    strip /usr/bin/ocrmypdf || true
 
 EXPOSE 80 21 23000-23010
 CMD ["python", "-m", "pypdfserver"]
