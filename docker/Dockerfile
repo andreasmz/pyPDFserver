@@ -24,7 +24,7 @@ RUN git clone https://github.com/agl/jbig2enc.git \
  && ./configure \
  && make install
 
-RUN ls -l /usr/bin
+RUN ls -l /usr/local/lib
 
 # Stage 2: Runtime image
 FROM python:3.13-slim
@@ -50,7 +50,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the binaries of jbig2enc to this docker image
-COPY --from=jbig2enc-builder /usr/bin/jbig2 /usr/local/bin/jbig2
+COPY --from=jbig2enc-builder /usr/local/lib/jbig2 /usr/local/lib/jbig2
 
 # Build python package
 COPY dist/python-package-distributions /tmp/dist
