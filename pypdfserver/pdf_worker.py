@@ -2,8 +2,7 @@ import ftplib
 import logging
 import ocrmypdf
 import ocrmypdf.exceptions
-import pypdf
-import pypdf.errors
+import pikepdf
 import tempfile
 import threading
 import uuid
@@ -389,16 +388,15 @@ class PDFTask(Task):
             raise TaskException(f"Missing input file '{self.input}'")
 
         try:
-            writer = pypdf.PdfWriter(clone_from=path)
+            with pikepdf.open(path) as pdf:
+                if pdf.is_encrypted:
+                    raise TaskException(f"Input file '{self.file_name}' is encrypted")
 
-            if writer.is_encrypted:
-                raise TaskException(f"Input file '{self.file_name}' is encrypted")
-
-            self.num_pages = writer.get_num_pages()
-
-            writer.add_metadata({"/Producer": "pyPDFserver"})
-            writer.write(self.export_artifact.path)
-        except pypdf.errors.PyPdfError as ex:
+                self.num_pages = len(pdf.pages)
+                with pdf.open_metadata() as metadata:
+                    metadata["/Producer"] = "pyPDFserver"
+                pdf.save(self.export_artifact.path, linearize=True, preserve_pdfa=True)
+        except pikepdf.PdfError as ex:
             raise TaskException(f"Failed to process '{self.file_name}': {str(ex)}")
 
     def __str__(self) -> str:
@@ -520,29 +518,32 @@ class DuplexTask(Task):
             raise TaskException(f"Missing input file '{self.input2}'")
 
         try:
-            reader1 = pypdf.PdfReader(path1)
-            reader2 = pypdf.PdfReader(path2)
+            with pikepdf.open(path1) as pdf1, pikepdf.open(path2) as pdf2:
+                if pdf1.is_encrypted:
+                    raise TaskException(f"Input file '{self.file1_name}' is encrypted")
+                if pdf2.is_encrypted:
+                    raise TaskException(f"Input file '{self.file2_name}' is encrypted")
 
-            if reader1.is_encrypted:
-                raise TaskException(f"Input file '{self.file1_name}' is encrypted")
-            if reader2.is_encrypted:
-                raise TaskException(f"Input file '{self.file2_name}' is encrypted")
+                num_pages1 = len(pdf1.pages)
+                num_pages2 = len(pdf2.pages)
 
-            num_pages1 = reader1.get_num_pages()
-            num_pages2 = reader2.get_num_pages()
+                pdf_merged = pikepdf.Pdf.new()
 
-            if num_pages1 != num_pages2:
-                raise TaskException(f"Rejected to merge PDFs with unequal page count ({num_pages1} and {num_pages2})")
-            
-            pdf_merged = pypdf.PdfWriter()
+                if num_pages1 != num_pages2:
+                    raise TaskException(f"Rejected to merge PDFs with unequal page count ({num_pages1} and {num_pages2})")
+                
+                for p1, p2 in zip(pdf1.pages[:], pdf2.pages[::-1]):
+                    pdf_merged.pages.append(p1)
+                    pdf_merged.pages.append(p2)
 
-            for p1, p2 in zip(reader1.pages[:], reader2.pages[::-1]):
-                pdf_merged.add_page(p1)
-                pdf_merged.add_page(p2)
+                with pdf_merged.open_metadata() as meta:
+                    with pdf1.open_metadata() as meta1, pdf2.open_metadata() as meta2:
+                        meta.update(meta2)
+                        meta.update(meta1)
+                    meta["/Producer"] = "pyPDFserver"
 
-            pdf_merged.add_metadata({"/Producer": "pyPDFserver"})
-            pdf_merged.write(self.export_artifact.path)
-        except pypdf.errors.PyPdfError as ex:
+                pdf_merged.save(self.export_artifact.path, preserve_pdfa=True, linearize=True)
+        except pikepdf.PdfError as ex:
             raise TaskException(f"Failed to merge '{self.file1_name}' with '{self.file2_name}': {str(ex)}")
         
             
