@@ -389,14 +389,15 @@ class PDFTask(Task):
 
         try:
             with pikepdf.open(path) as pdf:
-                if pdf.is_encrypted:
-                    raise TaskException(f"Input file '{self.file_name}' is encrypted")
-
                 self.num_pages = len(pdf.pages)
                 with pdf.open_metadata() as metadata:
-                    metadata["/Producer"] = "pyPDFserver"
+                    metadata["Producer"] = "pyPDFserver"
                 pdf.save(self.export_artifact.path, linearize=True, preserve_pdfa=True)
-        except pikepdf.PdfError as ex:
+
+        except (pikepdf.PdfError, pikepdf.PasswordError, pikepdf.DataDecodingError) as ex:
+            raise TaskException(f"Failed to process '{self.file_name}': {str(ex)}")
+        except ValueError as ex:
+            logger.error(f"Failed to process '{self.file_name}': ", exc_info=True)
             raise TaskException(f"Failed to process '{self.file_name}': {str(ex)}")
 
     def __str__(self) -> str:
@@ -519,11 +520,6 @@ class DuplexTask(Task):
 
         try:
             with pikepdf.open(path1) as pdf1, pikepdf.open(path2) as pdf2:
-                if pdf1.is_encrypted:
-                    raise TaskException(f"Input file '{self.file1_name}' is encrypted")
-                if pdf2.is_encrypted:
-                    raise TaskException(f"Input file '{self.file2_name}' is encrypted")
-
                 num_pages1 = len(pdf1.pages)
                 num_pages2 = len(pdf2.pages)
 
@@ -537,14 +533,17 @@ class DuplexTask(Task):
                     pdf_merged.pages.append(p2)
 
                 with pdf_merged.open_metadata() as meta:
-                    with pdf1.open_metadata() as meta1, pdf2.open_metadata() as meta2:
-                        meta.update(meta2)
-                        meta.update(meta1)
-                    meta["/Producer"] = "pyPDFserver"
+                    # with pdf1.open_metadata() as meta1, pdf2.open_metadata() as meta2:
+                    #     meta.update(meta2)
+                    #     meta.update(meta1)
+                    meta["Producer"] = "pyPDFserver"
 
                 pdf_merged.save(self.export_artifact.path, preserve_pdfa=True, linearize=True)
-        except pikepdf.PdfError as ex:
-            raise TaskException(f"Failed to merge '{self.file1_name}' with '{self.file2_name}': {str(ex)}")
+        except (pikepdf.PdfError, pikepdf.PasswordError, pikepdf.DataDecodingError) as ex:
+            raise TaskException(f"Failed to process '{self.export_name}': {str(ex)}")
+        except ValueError as ex:
+            logger.error(f"Failed to process '{self.export_name}': ", exc_info=True)
+            raise TaskException(f"Failed to process '{self.export_name}': {str(ex)}")
         
             
     @property

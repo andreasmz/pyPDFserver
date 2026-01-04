@@ -1,6 +1,5 @@
 from .core import *
 from .pdf_worker import Task, WaitForFileTask, PDFTask, OCRTask, DuplexTask, UploadToFTPTask, Artifact, FileArtifact
-from . import pdf_worker
 
 import hashlib
 import pyftpdlib.log
@@ -14,7 +13,7 @@ from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import FTPServer
 from threading import Thread
-from typing import cast, NamedTuple
+from typing import NamedTuple
 
 pyftpdlib.log.config_logging(pyftpdlib.log.logging.WARNING)
 pyftpdlib.log.logger.addHandler(file_log_handler)
