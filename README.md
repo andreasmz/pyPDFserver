@@ -162,6 +162,8 @@ ocr_deskew = True
 # (e.g. 0: no optimization, 1: lossless optimizations,
 #  2: some lossy optimizations, 3: aggressive optimization)
 ocr_optimize = 1
+# JPEG quality in percent (integer from 0 to 100). Leave blank to use default. Is only used with ocr_optimize >= 1
+ocr_jpg_quality =
 # Attempt to determine the correct orientation for each page and rotate it if necessary
 # (--rotate-pages parameter for OCRmyPDF)
 ocr_rotate_pages = True

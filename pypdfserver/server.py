@@ -98,6 +98,7 @@ class PDF_FTPHandler(FTPHandler):
                                      optimize=profile.ocr_optimize, 
                                      deskew=profile.ocr_deskew, 
                                      rotate_pages=profile.ocr_rotate_pages,
+                                     jpg_quality=profile.ocr_jpg_quality,
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
@@ -109,6 +110,7 @@ class PDF_FTPHandler(FTPHandler):
                                      optimize=profile.ocr_optimize, 
                                      deskew=profile.ocr_deskew, 
                                      rotate_pages=profile.ocr_rotate_pages,
+                                     jpg_quality=profile.ocr_jpg_quality,
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
@@ -212,6 +214,7 @@ class PDF_FTPHandler(FTPHandler):
                                      optimize=profile.ocr_optimize, 
                                      deskew=profile.ocr_deskew, 
                                      rotate_pages=profile.ocr_rotate_pages,
+                                     jpg_quality=profile.ocr_jpg_quality,
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
@@ -299,6 +302,14 @@ class PDFProfile:
             self.ocr_rotate_pages = profiles_config.getboolean(self.name, "ocr_rotate_pages")
         except ValueError:
             raise ConfigError(f"Missing field 'ocr_rotate_pages' in profile '{self.name}'")
+        
+        try:
+            self.ocr_jpg_quality = profiles_config.getint(self.name, "ocr_jpg_quality", fallback=0)
+        except ValueError:
+            self.ocr_jpg_quality = 0
+        
+        if self.ocr_jpg_quality < 10 or self.ocr_jpg_quality > 100:
+            self.ocr_jpg_quality = None
         
         try:
             self.ocr_tesseract_timeout = profiles_config.getint(self.name, "ocr_tesseract_timeout")

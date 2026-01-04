@@ -420,6 +420,7 @@ class OCRTask(Task):
                  optimize: int, 
                  deskew: bool, 
                  rotate_pages: bool, 
+                 jpg_quality: int|None,
                  num_jobs: int = 1, 
                  tesseract_timeout: int|None = 60,
                  group: str|None = None, 
@@ -431,6 +432,7 @@ class OCRTask(Task):
         self.deskew = deskew
         self.optimize = optimize
         self.rotate_pages = rotate_pages
+        self.jpg_quality = jpg_quality
         self.num_jobs = num_jobs
         self.tesseract_timeout = tesseract_timeout
 
@@ -455,6 +457,7 @@ class OCRTask(Task):
                                         jobs=self.num_jobs,
                                         optimize=self.optimize,
                                         tesseract_timeout=self.tesseract_timeout,
+                                        jpg_quality=self.jpg_quality,
                                         skip_text=True,
                                         progress_bar=False,
                                         )
@@ -474,7 +477,10 @@ class OCRTask(Task):
     
     @property
     def param_str(self) -> str:
-        return f"lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages}"
+        s = f"lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages}"
+        if self.jpg_quality is not None:
+            s += f", jpg_quality: {self.jpg_quality}"
+        return s
 
     def __repr__(self) -> str:
         return f"<OCR '{self.file_name}' ({self.param_str})>"
