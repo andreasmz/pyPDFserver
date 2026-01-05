@@ -99,6 +99,8 @@ class PDF_FTPHandler(FTPHandler):
                                      deskew=profile.ocr_deskew, 
                                      rotate_pages=profile.ocr_rotate_pages,
                                      jpg_quality=profile.ocr_jpg_quality,
+                                     png_quality=profile.ocr_png_quality,
+                                     color_conversion_strategy=profile.ocr_color_conversion_strategy,
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
@@ -111,6 +113,8 @@ class PDF_FTPHandler(FTPHandler):
                                      deskew=profile.ocr_deskew, 
                                      rotate_pages=profile.ocr_rotate_pages,
                                      jpg_quality=profile.ocr_jpg_quality,
+                                     png_quality=profile.ocr_png_quality,
+                                     color_conversion_strategy=profile.ocr_color_conversion_strategy,
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
@@ -203,7 +207,7 @@ class PDF_FTPHandler(FTPHandler):
 
             wait_for_file_task = WaitForFileTask(display_name="Receive user upload", display_desc="", hidden=True, group=group)
             wait_for_file_task.file_artifact = artifact
-            wait_for_file_task.set_group_name(file_name)
+            wait_for_file_task.set_group_name(export_name)
             tasks.append(wait_for_file_task)
 
             ocr_task = None
@@ -215,6 +219,8 @@ class PDF_FTPHandler(FTPHandler):
                                      deskew=profile.ocr_deskew, 
                                      rotate_pages=profile.ocr_rotate_pages,
                                      jpg_quality=profile.ocr_jpg_quality,
+                                     png_quality=profile.ocr_png_quality,
+                                     color_conversion_strategy=profile.ocr_color_conversion_strategy,
                                      num_jobs=1,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
@@ -226,7 +232,7 @@ class PDF_FTPHandler(FTPHandler):
             tasks.append(pdf_task)
 
             upload_task = UploadToFTPTask(pdf_task.export_artifact_link, 
-                file_name,
+                export_name,
                 address=(PDF_FTPHandler.server.export_config.host, PDF_FTPHandler.server.export_config.port),
                 username=PDF_FTPHandler.server.export_config.username,
                 password=PDF_FTPHandler.server.export_config.password,
@@ -310,6 +316,18 @@ class PDFProfile:
         
         if self.ocr_jpg_quality < 10 or self.ocr_jpg_quality > 100:
             self.ocr_jpg_quality = None
+
+        try:
+            self.ocr_png_quality = profiles_config.getint(self.name, "ocr_png_quality", fallback=0)
+        except ValueError:
+            self.ocr_png_quality = 0
+        
+        if self.ocr_png_quality < 10 or self.ocr_png_quality > 100:
+            self.ocr_png_quality = None
+
+        self.ocr_color_conversion_strategy = profiles_config.get(self.name, "ocr_color_conversion_strategy", fallback="")
+        if self.ocr_color_conversion_strategy.strip() == "":
+            self.ocr_color_conversion_strategy = None
         
         try:
             self.ocr_tesseract_timeout = profiles_config.getint(self.name, "ocr_tesseract_timeout")

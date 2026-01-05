@@ -24,11 +24,3 @@ def save_config() -> None:
         logger.error(f"Failed to save the config file: ", exc_info=True)
     else:
         logger.debug(f"Saved config file")
-
-    try:
-        with open(profiles_path, "w") as f:
-            profiles_config.write(f)
-    except Exception as ex:
-        logger.error(f"Failed to save the profile file: ", exc_info=True)
-    else:
-        logger.debug(f"Saved profile file")

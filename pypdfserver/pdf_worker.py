@@ -421,6 +421,8 @@ class OCRTask(Task):
                  deskew: bool, 
                  rotate_pages: bool, 
                  jpg_quality: int|None,
+                 png_quality: int|None,
+                 color_conversion_strategy: str|None,
                  num_jobs: int = 1, 
                  tesseract_timeout: int|None = 60,
                  group: str|None = None, 
@@ -433,8 +435,13 @@ class OCRTask(Task):
         self.optimize = optimize
         self.rotate_pages = rotate_pages
         self.jpg_quality = jpg_quality
+        self.png_quality = png_quality
+        self.color_conversion_strategy = color_conversion_strategy
         self.num_jobs = num_jobs
         self.tesseract_timeout = tesseract_timeout
+
+        self.file_size_before: int|None = None
+        self.file_size_after: int|None = None
 
         self.register_artifact(FileArtifact(self, "export"))
         self.export_artifact_link = FileArtifactLink("export", self)
@@ -448,6 +455,8 @@ class OCRTask(Task):
         path = self.input.get().path if isinstance(self.input, FileArtifactLink) else self.input
         if not path.exists():
             raise TaskException(f"Missing input file '{self.input}'")
+        
+        self.file_size_before = path.stat().st_size
 
         try:
             exit_code = ocrmypdf.ocr(path, self.export_artifact.path, 
@@ -456,8 +465,10 @@ class OCRTask(Task):
                                         rotate_pages=self.rotate_pages,
                                         jobs=self.num_jobs,
                                         optimize=self.optimize,
+                                        color_conversion_strategy=self.color_conversion_strategy,
                                         tesseract_timeout=self.tesseract_timeout,
                                         jpg_quality=self.jpg_quality,
+                                        png_quality=self.png_quality,
                                         skip_text=True,
                                         progress_bar=False,
                                         )
@@ -465,7 +476,8 @@ class OCRTask(Task):
             raise TaskException(str(ex))
         if not exit_code == ocrmypdf.ExitCode.ok:
             raise TaskException(exit_code.name)
-        logger.debug(f"Applied OCR for '{self.file_name}' (lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages})")
+        self.file_size_after = self.export_artifact.path.stat().st_size
+        logger.debug(f"Applied OCR for '{self.file_name}' ({self.param_str})")
         
     @property
     def name(self) -> str:
@@ -479,7 +491,13 @@ class OCRTask(Task):
     def param_str(self) -> str:
         s = f"lang={self.language}, deskew={self.deskew}, optimize={self.optimize}, rotate_pages: {self.rotate_pages}"
         if self.jpg_quality is not None:
-            s += f", jpg_quality: {self.jpg_quality}"
+            s += f", jpg_quality={self.jpg_quality}"
+        if self.png_quality is not None:
+            s += f", png_quality={self.png_quality}"
+        if self.color_conversion_strategy is not None:
+            s += f", color_conversion_strategy={self.color_conversion_strategy}"
+        if self.file_size_before is not None and self.file_size_after is not None:
+            s += f", {self.file_size_before/(1024**2):>0.3}MB -> {self.file_size_after/(1024**2):>0.3}MB"
         return s
 
     def __repr__(self) -> str:

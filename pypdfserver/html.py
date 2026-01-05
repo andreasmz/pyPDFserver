@@ -3,7 +3,7 @@
 import threading
 import uuid
 from datetime import datetime, timedelta
-from flask import Flask, render_template_string, render_template
+from flask import Flask, render_template_string, request
 
 from .core import *
 from . import __version__
@@ -50,6 +50,7 @@ class Webinterface:
 
     @app.route("/")
     def index():
+        logger.debug(f"User {request.remote_addr} connected to the webinterface")
         with open(Path(__file__).parent / "html" / "index.html", "r", encoding="utf-8") as f:
             html = f.read()
 

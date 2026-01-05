@@ -164,6 +164,11 @@ ocr_deskew = True
 ocr_optimize = 1
 # JPEG quality in percent (integer from 0 to 100). Leave blank to use default. Is only used with ocr_optimize >= 1
 ocr_jpg_quality =
+# PNG quality in percent (integer from 0 to 100). Leave blank to use default. Is only used with ocr_optimize >= 1
+ocr_png_quality =
+# Color conversion strategy passed to ghostscript by OCRmyPDF. Set for example to 'Gray' to convert to grayscale image. 
+# Leave blank to not alter the colorspace.
+ocr_color_conversion_strategy =
 # Attempt to determine the correct orientation for each page and rotate it if necessary
 # (--rotate-pages parameter for OCRmyPDF)
 ocr_rotate_pages = True
