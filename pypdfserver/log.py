@@ -78,7 +78,7 @@ logger.addHandler(stream_log_handler)
 file_log_handler = None
 
 if config.getboolean("SETTINGS", "log_to_file", fallback=True):
-    file_log_handler = RotatingFileHandler(log_dir / "pyPDFserver.logs", mode="a", maxBytes=(1024**2), backupCount=5)
+    file_log_handler = RotatingFileHandler(log_dir / "pyPDFserver.logs", mode="a", maxBytes=(1024**2), backupCount=5, encoding="utf-8")
     file_log_handler.setFormatter(_file_formatter)
     file_log_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_log_handler)

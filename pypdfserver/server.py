@@ -82,7 +82,7 @@ class PDF_FTPHandler(FTPHandler):
 
             wait_for_file1_task = WaitForFileTask(display_name="Receive duplex front pages", display_desc="", hidden=False, group=group)
             wait_for_file1_task.file_artifact = artifact
-            wait_for_file1_task.set_group_name(file_name)
+            wait_for_file1_task.set_group_name(f"{file_name} (profile {profile.username})")
             tasks.append(wait_for_file1_task)
 
             wait_for_file2_task = WaitForFileTask(display_name="Receive duplex back pages", display_desc="Waiting for user upload", hidden=False, group=group)
@@ -183,7 +183,7 @@ class PDF_FTPHandler(FTPHandler):
                 export_name = export_name.replace("(*2)", r.group("s"))
 
             # Update names in the tasks
-            profile.duplex_pdf_cache.duplex_task.set_group_name(f"'{profile.duplex_pdf_cache.file1_name}' + '{file_name}' -> {export_name}")
+            profile.duplex_pdf_cache.duplex_task.set_group_name(f"'{profile.duplex_pdf_cache.file1_name}' + '{file_name}' -> {export_name} (profile {profile.username})")
             if profile.duplex_pdf_cache.ocr_duplex2_task is not None:
                 profile.duplex_pdf_cache.ocr_duplex2_task.file_name = file_name
             profile.duplex_pdf_cache.duplex_task.file2_name = file_name
@@ -207,7 +207,7 @@ class PDF_FTPHandler(FTPHandler):
 
             wait_for_file_task = WaitForFileTask(display_name="Receive user upload", display_desc="", hidden=True, group=group)
             wait_for_file_task.file_artifact = artifact
-            wait_for_file_task.set_group_name(export_name)
+            wait_for_file_task.set_group_name(f"{export_name} (profile {profile.username})")
             tasks.append(wait_for_file_task)
 
             ocr_task = None

@@ -17,6 +17,7 @@ from .core import *
 
 ocrmypdf_logger = logging.getLogger("ocrmypdf")
 ocrmypdf_logger.handlers.clear()
+ocrmypdf_logger.setLevel(logging.DEBUG)
 ocrmypdf_logger.addHandler(stream_log_handler)
 ocrmypdf_logger.addHandler(file_log_handler)
 
