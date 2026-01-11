@@ -15,8 +15,9 @@ from pyftpdlib.servers import FTPServer
 from threading import Thread
 from typing import NamedTuple
 
-pyftpdlib.log.config_logging(pyftpdlib.log.logging.WARNING)
+pyftpdlib.log.logger.setLevel(log.logging.INFO)
 pyftpdlib.log.logger.addHandler(file_log_handler)
+pyftpdlib.log.logger.addHandler(lib_log_handler)
 
 class PDFAuthorizer(DummyAuthorizer):
     """ Extend the Dummy Authorizer class with hashed password storage """
@@ -101,7 +102,7 @@ class PDF_FTPHandler(FTPHandler):
                                      jpg_quality=profile.ocr_jpg_quality,
                                      png_quality=profile.ocr_png_quality,
                                      color_conversion_strategy=profile.ocr_color_conversion_strategy,
-                                     num_jobs=1,
+                                     num_jobs=PDF_FTPHandler.server.num_threads,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
                                      )
@@ -115,7 +116,7 @@ class PDF_FTPHandler(FTPHandler):
                                      jpg_quality=profile.ocr_jpg_quality,
                                      png_quality=profile.ocr_png_quality,
                                      color_conversion_strategy=profile.ocr_color_conversion_strategy,
-                                     num_jobs=1,
+                                     num_jobs=PDF_FTPHandler.server.num_threads,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
                                      )
@@ -221,7 +222,7 @@ class PDF_FTPHandler(FTPHandler):
                                      jpg_quality=profile.ocr_jpg_quality,
                                      png_quality=profile.ocr_png_quality,
                                      color_conversion_strategy=profile.ocr_color_conversion_strategy,
-                                     num_jobs=1,
+                                     num_jobs=PDF_FTPHandler.server.num_threads,
                                      tesseract_timeout=profile.ocr_tesseract_timeout,
                                      group=group
                                      )
@@ -454,6 +455,13 @@ class PDF_FTPServer:
             except ValueError:
                 raise ConfigError(f"Invalid list of ports in field 'passive_ports' of section 'FTP'")
             logger.debug(f"Using passive ports {', '.join([str(x) for x in self.passive_ports])}")
+
+        try:
+            self.num_threads = config.getint("SETTINGS", "num_threads", fallback=-1)
+        except ValueError:
+            self.num_threads = -1
+        if self.num_threads < 1:
+            self.num_threads = None
 
         handler = PDF_FTPHandler
         handler.authorizer = authorizer

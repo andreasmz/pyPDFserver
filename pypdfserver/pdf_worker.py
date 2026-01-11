@@ -18,7 +18,7 @@ from .core import *
 ocrmypdf_logger = logging.getLogger("ocrmypdf")
 ocrmypdf_logger.handlers.clear()
 ocrmypdf_logger.setLevel(logging.DEBUG)
-ocrmypdf_logger.addHandler(stream_log_handler)
+ocrmypdf_logger.addHandler(lib_log_handler)
 ocrmypdf_logger.addHandler(file_log_handler)
 
 class TaskState(Enum):
@@ -424,7 +424,7 @@ class OCRTask(Task):
                  jpg_quality: int|None,
                  png_quality: int|None,
                  color_conversion_strategy: str|None,
-                 num_jobs: int = 1, 
+                 num_jobs: int|None = None, 
                  tesseract_timeout: int|None = 60,
                  group: str|None = None, 
                  hidden: bool = False) -> None:

@@ -30,35 +30,20 @@ class ColorFormatter(logging.Formatter):
             return f"{color}{msg}{self.__class__.RESET_COLOR}"
         return msg
 
-class StdOutLogger(logging.Handler):
+class PromptToolkitHandler(logging.Handler):
     """ Implements prompttoolkit logging """
 
-    def __init__(self, level: int | str = 0) -> types.NoneType:
-        try:
-            self.use_colors = config.getboolean("SETTINGS", "log_colors")
-        except ValueError:
-            self.use_colors = False
-
-        try:
-            self.interactive_shell = config.getboolean("SETTINGS", "interactive_shell")
-        except ValueError:
-            self.interactive_shell = False
-        
-        return super().__init__(level)
-
     def emit(self, record: logging.LogRecord) -> None:
-        if self.interactive_shell:
-            prompt_toolkit.print_formatted_text(prompt_toolkit.formatted_text.ANSI(self.format(record)))
-            return
-        return super().emit(record)
+        prompt_toolkit.print_formatted_text(prompt_toolkit.formatted_text.ANSI(self.format(record)))
 
 log_dir = platformdirs.user_log_path(appname="pyPDFserver", appauthor=False, ensure_exists=True)
 
 logger = logging.getLogger("pyPDFserver")
 logger.setLevel(logging.DEBUG)
 
-_file_formatter = logging.Formatter('[%(asctime)s %(levelname)s]: %(message)s')
+_file_formatter = logging.Formatter('[%(asctime)s %(levelname)s %(name)s]: %(message)s')
 _stream_formatter = ColorFormatter('[%(asctime)s %(levelname)s]: %(message)s')
+_lib_stream_formatter = logging.Formatter('[%(asctime)s %(levelname)s %(name)s]: %(message)s')
 
 try:
     use_colors = config.getboolean("SETTINGS", "log_colors")
@@ -70,10 +55,12 @@ try:
 except ValueError:
     interactive_shell = False
 
-stream_log_handler = StdOutLogger() if interactive_shell else logging.StreamHandler()
-stream_log_handler.setFormatter(_stream_formatter)
-stream_log_handler.setLevel(logging.INFO)
-logger.addHandler(stream_log_handler)
+_log_handler = PromptToolkitHandler() if interactive_shell else logging.StreamHandler()
+_log_handler.setFormatter(_stream_formatter)
+logger.addHandler(_log_handler)
+
+lib_log_handler = PromptToolkitHandler() if interactive_shell else logging.StreamHandler()
+lib_log_handler.setFormatter(_lib_stream_formatter)
 
 file_log_handler = None
 
@@ -100,22 +87,29 @@ threading.excepthook = thread_exceptions_hook
 
 match _log_level := config.get("SETTINGS", "log_level", fallback="INFO").upper():
     case "DEBUG":
-        stream_log_handler.setLevel(logging.DEBUG)
+        _log_handler.setLevel(logging.DEBUG)
+        lib_log_handler.setLevel(logging.DEBUG)
     case "INFO":
-        stream_log_handler.setLevel(logging.INFO)
+        # Use warning for external logging (e.g. OCRmyPDF) to not have to much logs
+        _log_handler.setLevel(logging.INFO)
+        lib_log_handler.setLevel(logging.WARNING)
     case "WARNING":
-        stream_log_handler.setLevel(logging.WARNING)
+        _log_handler.setLevel(logging.WARNING)
+        lib_log_handler.setLevel(logging.WARNING)
     case "ERROR":
-        stream_log_handler.setLevel(logging.ERROR)
+        _log_handler.setLevel(logging.ERROR)
+        lib_log_handler.setLevel(logging.ERROR)
     case "CRITICAL":
-        stream_log_handler.setLevel(logging.CRITICAL)
+        _log_handler.setLevel(logging.CRITICAL)
+        lib_log_handler.setLevel(logging.CRITICAL)
     case _:
-        logger.warning(f"Invalid value '{_log_level}' for log_level. Defaulting to {logging.getLevelName(stream_log_handler.level)}")
+        logger.warning(f"Invalid value '{_log_level}' for log_level. Defaulting to {logging.getLevelName(_log_handler.level)}")
 
 
 def debug() -> None:
     """ Start debugging """
-    stream_log_handler.setLevel(logging.DEBUG)
+    _log_handler.setLevel(logging.DEBUG)
+    lib_log_handler.setLevel(logging.DEBUG)
     logger.info(f"Started debugging")
 
 if "-debug" in sys.argv:

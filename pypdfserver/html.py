@@ -12,10 +12,13 @@ from .pdf_worker import Task, TaskState
 app = Flask(__name__)
 
 app.logger.addHandler(file_log_handler)
-app.logger.setLevel(log.logging.WARNING)
+app.logger.addHandler(lib_log_handler)
 
 # Disable server logging
-log.logging.getLogger("werkzeug").setLevel(log.logging.ERROR)
+log.logging.getLogger("werkzeug").handlers.clear()
+log.logging.getLogger("werkzeug").addHandler(file_log_handler)
+log.logging.getLogger("werkzeug").addHandler(lib_log_handler)
+log.logging.getLogger("werkzeug").setLevel(log.logging.WARNING)
 
 class Webinterface:
 

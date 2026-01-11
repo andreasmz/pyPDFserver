@@ -1,5 +1,5 @@
 from . import log, settings
-from .log import logger, debug, ConfigError, file_log_handler, stream_log_handler
+from .log import logger, debug, ConfigError, file_log_handler, lib_log_handler
 from .settings import config, profiles_config, save_config
 
 import shutil

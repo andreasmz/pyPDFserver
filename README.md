@@ -101,6 +101,8 @@ duplex_timeout = 600
 clean_old_temporary_files = True
 # Set a time limit in minutes to keep old tasks in cache before garbage collecting them
 tasks_keep_time = 180
+# Define a soft limit of how many threads are used. Leave blank to not use a limit
+num_threads = 
 
 [FTP]
 local_ip = 127.0.0.1
